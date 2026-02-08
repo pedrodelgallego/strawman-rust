@@ -9,6 +9,21 @@
 
 set -euo pipefail
 
+# ── Colors ──────────────────────────────────────────────────────────────
+
+if [[ -t 1 ]]; then
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[0;33m'
+    BLUE='\033[0;34m'
+    CYAN='\033[0;36m'
+    BOLD='\033[1m'
+    DIM='\033[2m'
+    RESET='\033[0m'
+else
+    RED='' GREEN='' YELLOW='' BLUE='' CYAN='' BOLD='' DIM='' RESET=''
+fi
+
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLAN="$PROJECT_DIR/plan.md"
 SPEC="$PROJECT_DIR/spec.md"
@@ -26,19 +41,19 @@ fi
 
 load_config() {
     if ! command -v jq &>/dev/null; then
-        echo "ERROR: jq is required but not installed." >&2
-        echo "  macOS:  brew install jq" >&2
-        echo "  Linux:  apt install jq" >&2
+        echo -e "${RED}ERROR: jq is required but not installed.${RESET}" >&2
+        echo -e "  macOS:  ${CYAN}brew install jq${RESET}" >&2
+        echo -e "  Linux:  ${CYAN}apt install jq${RESET}" >&2
         exit 1
     fi
 
     if [[ ! -f "$CONFIG" ]]; then
-        echo "ERROR: config.json not found at $CONFIG" >&2
+        echo -e "${RED}ERROR: config.json not found at $CONFIG${RESET}" >&2
         exit 1
     fi
 
     if ! jq empty "$CONFIG" 2>/dev/null; then
-        echo "ERROR: config.json is not valid JSON" >&2
+        echo -e "${RED}ERROR: config.json is not valid JSON${RESET}" >&2
         exit 1
     fi
 
@@ -67,7 +82,7 @@ load_config() {
         local val
         val=$(jq -r ".$field // empty" "$CONFIG")
         if [[ -z "$val" ]]; then
-            echo "ERROR: Required config field '$field' is missing in config.json" >&2
+            echo -e "${RED}ERROR: Required config field '$field' is missing in config.json${RESET}" >&2
             exit 1
         fi
     done
@@ -79,7 +94,7 @@ preflight_checks() {
     local missing=0
     for cmd in claude jq git; do
         if ! command -v "$cmd" &>/dev/null; then
-            echo "ERROR: '$cmd' is required but not found in PATH" >&2
+            echo -e "${RED}ERROR: '$cmd' is required but not found in PATH${RESET}" >&2
             missing=1
         fi
     done
@@ -97,15 +112,15 @@ show_plan_summary() {
     local claude_ver
     claude_ver=$(claude --version 2>/dev/null) || claude_ver="unknown"
 
-    log "Language: $LANG_NAME | Test: $TEST_DIR_CMD | Framework: $TEST_FRAMEWORK"
-    log "Claude CLI: $claude_ver"
-    log "Plan: $checked/$total tasks done, $remaining remaining"
+    log "${DIM}Language:${RESET} $LANG_NAME ${DIM}|${RESET} ${DIM}Test:${RESET} $TEST_DIR_CMD ${DIM}|${RESET} ${DIM}Framework:${RESET} $TEST_FRAMEWORK"
+    log "${DIM}Claude CLI:${RESET} $claude_ver"
+    log "${CYAN}Plan:${RESET} ${BOLD}$checked/$total${RESET} tasks done, ${BOLD}$remaining${RESET} remaining"
 
     # Verify test command binary is available
     local test_bin
     test_bin=$(echo "$TEST_DIR_CMD" | awk '{print $1}')
     if ! command -v "$test_bin" &>/dev/null; then
-        echo "ERROR: Test command '$test_bin' not found in PATH" >&2
+        echo -e "${RED}ERROR: Test command '$test_bin' not found in PATH${RESET}" >&2
         exit 1
     fi
 }
@@ -114,8 +129,11 @@ show_plan_summary() {
 
 log() {
     local msg="[$(date '+%Y-%m-%d %H:%M:%S')] $1"
-    echo "$msg"
-    echo "$msg" >> "$LOG"
+    echo -e "${DIM}[$(date '+%Y-%m-%d %H:%M:%S')]${RESET} $1"
+    # Strip color codes for the log file
+    local plain
+    plain=$(echo -e "$msg" | sed $'s/\033\\[[0-9;]*m//g')
+    echo "$plain" >> "$LOG"
 }
 
 # ── Progress dashboard ───────────────────────────────────────────────────
@@ -146,18 +164,18 @@ show_progress() {
     local empty=$((bar_width - filled))
     local bar=""
     local i
-    for ((i=0; i<filled; i++)); do bar+="#"; done
-    for ((i=0; i<empty; i++)); do bar+="-"; done
+    for ((i=0; i<filled; i++)); do bar+="█"; done
+    for ((i=0; i<empty; i++)); do bar+="░"; done
 
     echo ""
-    echo "============================================================"
-    echo "  RALPH LOOP | ${checked}/${total} tasks (${pct}%) | ${elapsed_m}m elapsed"
-    echo "  [${bar}]"
-    echo "  Next: ${task_text}"
+    echo -e "${BOLD}${BLUE}════════════════════════════════════════════════════════════${RESET}"
+    echo -e "  ${BOLD}RALPH LOOP${RESET} ${DIM}|${RESET} ${GREEN}${checked}${RESET}/${total} tasks ${DIM}(${pct}%)${RESET} ${DIM}|${RESET} ${elapsed_m}m elapsed"
+    echo -e "  ${GREEN}${bar:0:$filled}${DIM}${bar:$filled}${RESET}"
+    echo -e "  ${CYAN}Next:${RESET} ${task_text}"
     if [[ "$attempt" -gt 1 ]]; then
-        echo "  Retry: #${attempt} of ${MAX_RETRIES}"
+        echo -e "  ${YELLOW}Retry:${RESET} #${attempt} of ${MAX_RETRIES}"
     fi
-    echo "============================================================"
+    echo -e "${BOLD}${BLUE}════════════════════════════════════════════════════════════${RESET}"
     echo ""
 }
 
@@ -310,13 +328,13 @@ validate_context() {
     local lines
     lines=$(wc -l < "$CONTEXT_FILE")
     if [[ $lines -gt 100 ]]; then
-        log "WARNING: context.md is $lines lines (limit: 100). It may get truncated in prompts."
+        log "${YELLOW}WARNING:${RESET} context.md is $lines lines (limit: 100). It may get truncated in prompts."
     fi
 
     # Verify required sections exist
     for section in "## Current State" "## Conventions & Decisions" "## Gotchas"; do
         if ! grep -q "$section" "$CONTEXT_FILE"; then
-            log "WARNING: context.md is missing section: $section"
+            log "${YELLOW}WARNING:${RESET} context.md is missing section: $section"
         fi
     done
 }
@@ -408,7 +426,7 @@ ralph_stream_filter() {
                 subtype=$(echo "$line" | jq -r '.subtype // empty' 2>/dev/null)
                 if [[ "$subtype" == "init" ]]; then
                     model=$(echo "$line" | jq -r '.model // "unknown"' 2>/dev/null)
-                    echo "  [init] model=$model"
+                    echo -e "  ${DIM}[init]${RESET} model=${CYAN}$model${RESET}"
                 fi
                 ;;
             assistant)
@@ -428,7 +446,9 @@ ralph_stream_filter() {
                     )"' 2>/dev/null)
                 if [[ -n "$tools" ]]; then
                     echo "$tools" | while IFS= read -r tline; do
-                        echo "  [turn $turn_count] $tline"
+                        local tool_name="${tline%%:*}"
+                        local tool_arg="${tline#*: }"
+                        echo -e "  ${DIM}[turn $turn_count]${RESET} ${BLUE}${tool_name}${RESET}: ${DIM}${tool_arg}${RESET}"
                     done
                 fi
 
@@ -439,7 +459,7 @@ ralph_stream_filter() {
                     | select(.type == "text")
                     | .text' 2>/dev/null | head -c 120)
                 if [[ -n "$text" ]]; then
-                    echo "  [turn $turn_count] $text"
+                    echo -e "  ${DIM}[turn $turn_count]${RESET} $text"
                 fi
                 ;;
             result)
@@ -448,7 +468,9 @@ ralph_stream_filter() {
                 total_cost=$(echo "$line" | jq -r '.total_cost_usd // "?"' 2>/dev/null)
                 duration_ms=$(echo "$line" | jq -r '.duration_ms // "?"' 2>/dev/null)
                 subtype=$(echo "$line" | jq -r '.subtype // "?"' 2>/dev/null)
-                echo "  [done] turns=$num_turns cost=\$${total_cost} time=${duration_ms}ms status=$subtype"
+                local status_color="$GREEN"
+                [[ "$subtype" == "error"* ]] && status_color="$RED"
+                echo -e "  ${BOLD}[done]${RESET} turns=${num_turns} cost=${YELLOW}\$${total_cost}${RESET} time=${duration_ms}ms status=${status_color}${subtype}${RESET}"
                 ;;
         esac
     done
@@ -463,9 +485,9 @@ parse_test_failures() {
     local summary
     summary=$(echo "$output" | grep -iE '[0-9]+ (tests?|checks?) (failed|passed|run)' | tail -3)
     if [[ -n "$summary" ]]; then
-        log "Test summary:"
+        log "${BOLD}Test summary:${RESET}"
         echo "$summary" | while IFS= read -r sline; do
-            log "  $sline"
+            log "  ${DIM}$sline${RESET}"
         done
     fi
 
@@ -473,9 +495,9 @@ parse_test_failures() {
     local failures
     failures=$(echo "$output" | grep -A 4 'FAILURE' | grep -E '(name:|actual:|expected:)' | head -20)
     if [[ -n "$failures" ]]; then
-        log "Failing tests:"
+        log "${RED}Failing tests:${RESET}"
         echo "$failures" | while IFS= read -r fline; do
-            log "  $fline"
+            log "  ${RED}$fline${RESET}"
         done
     fi
 
@@ -483,9 +505,9 @@ parse_test_failures() {
     local errors
     errors=$(echo "$output" | grep -iE '^(ERROR|error:|Exception)' | head -5)
     if [[ -n "$errors" ]]; then
-        log "Errors:"
+        log "${RED}Errors:${RESET}"
         echo "$errors" | while IFS= read -r eline; do
-            log "  $eline"
+            log "  ${RED}$eline${RESET}"
         done
     fi
 }
@@ -539,7 +561,7 @@ verify_tdd_discipline() {
 
     if [[ -z "$test_diff" && -z "$test_modified" && -z "$test_new" ]]; then
         tdd_issues="${tdd_issues}No test files were written or modified (RED phase missing). "
-        log "TDD WARNING: No test files changed — RED phase may have been skipped"
+        log "${YELLOW}TDD WARNING:${RESET} No test files changed — RED phase may have been skipped"
     fi
 
     # b. Check source files were modified or added (GREEN phase)
@@ -556,7 +578,7 @@ verify_tdd_discipline() {
     src_new=$(cd "$PROJECT_DIR" && git ls-files --others --exclude-standard -- "$SOURCE_DIR/" 2>/dev/null || true)
 
     if [[ -z "$src_diff" && -z "$src_modified" && -z "$src_new" ]]; then
-        log "TDD WARNING: No source files changed — tests may pass without new code"
+        log "${YELLOW}TDD WARNING:${RESET} No source files changed — tests may pass without new code"
     fi
 
     # c. Regression detection: run only unmodified test files
@@ -578,7 +600,7 @@ verify_tdd_discipline() {
                 local reg_exit=0
                 (cd "$PROJECT_DIR" && eval "$TEST_CMD $relative") > /dev/null 2>&1 || reg_exit=$?
                 if [[ $reg_exit -ne 0 ]]; then
-                    log "REGRESSION: $relative fails but was not modified by Claude"
+                    log "${RED}REGRESSION:${RESET} $relative fails but was not modified by Claude"
                     tdd_issues="${tdd_issues}Regression in $relative. "
                     regression_found=true
                 fi
@@ -588,7 +610,7 @@ verify_tdd_discipline() {
 
     # Return result
     if [[ -n "$tdd_issues" ]]; then
-        log "TDD DISCIPLINE ISSUES: $tdd_issues"
+        log "${YELLOW}TDD DISCIPLINE ISSUES:${RESET} $tdd_issues"
         echo "$tdd_issues"
         return 1
     fi
@@ -605,7 +627,7 @@ reset_working_tree() {
         git checkout -- "$SOURCE_DIR/" "$TEST_DIR/" 2>/dev/null || true
         git clean -fd "$SOURCE_DIR/" "$TEST_DIR/" 2>/dev/null || true
     })
-    log "Working tree reset to last committed state"
+    log "${YELLOW}Working tree reset to last committed state${RESET}"
 }
 
 # ── Scope enforcement ────────────────────────────────────────────────────
@@ -628,7 +650,7 @@ check_scope() {
     done <<< "$changed_files"
 
     if [[ -n "$unexpected" ]]; then
-        log "WARNING: Files modified outside expected scope ($SOURCE_DIR/, $TEST_DIR/):"
+        log "${YELLOW}WARNING:${RESET} Files modified outside expected scope ($SOURCE_DIR/, $TEST_DIR/):"
         echo -e "$unexpected" | while IFS= read -r f; do
             [[ -n "$f" ]] && log "  $f"
         done
@@ -735,11 +757,11 @@ RETRY
 # Optional lint step — advisory only (warn but don't fail).
 run_lint() {
     [[ -z "$LINT_CMD" ]] && return 0
-    log "Linting: $LINT_CMD..."
+    log "${DIM}Linting:${RESET} $LINT_CMD..."
     local lint_output lint_exit=0
     lint_output=$( (cd "$PROJECT_DIR" && eval "$LINT_CMD") 2>&1) || lint_exit=$?
     if [[ $lint_exit -ne 0 ]]; then
-        log "LINT WARNING:"
+        log "${YELLOW}LINT WARNING:${RESET}"
         echo "$lint_output" | head -20 | while IFS= read -r l; do log "  $l"; done
     fi
     echo "$lint_output" >> "${CURRENT_TASK_LOG:-$LOG}"
@@ -749,7 +771,7 @@ run_lint() {
 # Optional coverage step — advisory only (warn but don't fail).
 run_coverage() {
     [[ -z "$COVERAGE_CMD" ]] && return 0
-    log "Coverage: $COVERAGE_CMD..."
+    log "${DIM}Coverage:${RESET} $COVERAGE_CMD..."
     local cov_output cov_exit=0
     cov_output=$( (cd "$PROJECT_DIR" && eval "$COVERAGE_CMD") 2>&1) || cov_exit=$?
     echo "$cov_output" >> "${CURRENT_TASK_LOG:-$LOG}"
@@ -758,7 +780,7 @@ run_coverage() {
         local pct
         pct=$(echo "$cov_output" | grep -oE '[0-9]+%' | tail -1 | tr -d '%')
         if [[ -n "$pct" && "$pct" -lt "$COVERAGE_THRESHOLD" ]]; then
-            log "COVERAGE WARNING: ${pct}% is below threshold (${COVERAGE_THRESHOLD}%)"
+            log "${YELLOW}COVERAGE WARNING:${RESET} ${pct}% is below threshold (${COVERAGE_THRESHOLD}%)"
         else
             log "Coverage: ${pct:-?}%"
         fi
@@ -773,18 +795,18 @@ run_integration_tests() {
     [[ -z "$INTEGRATION_TEST_CMD" ]] && return 0
     local phase_header="$1"
 
-    log "INTEGRATION: Running integration tests for $phase_header..."
+    log "${BLUE}INTEGRATION:${RESET} Running integration tests for $phase_header..."
     local int_output int_exit=0
     int_output=$( (cd "$PROJECT_DIR" && eval "$INTEGRATION_TEST_CMD") 2>&1) || int_exit=$?
     echo "$int_output" >> "${CURRENT_TASK_LOG:-$LOG}"
 
     if [[ $int_exit -ne 0 ]]; then
-        log "INTEGRATION FAIL: Integration tests did not pass after $phase_header"
+        log "${RED}INTEGRATION FAIL:${RESET} Integration tests did not pass after $phase_header"
         log "Output:"
         echo "$int_output" | head -30 | while IFS= read -r l; do log "  $l"; done
         return 1
     fi
-    log "INTEGRATION PASS: All integration tests green"
+    log "${GREEN}INTEGRATION PASS:${RESET} All integration tests green"
     return 0
 }
 
@@ -794,7 +816,7 @@ auto_commit() {
     local story_header="$1"
     local phase_header="$2"
 
-    log "COMMIT: All checkboxes green for $story_header"
+    log "${GREEN}COMMIT:${RESET} All checkboxes green for ${BOLD}$story_header${RESET}"
 
     if [[ "$DRY_RUN" == true ]]; then
         log "DRY-RUN: Would commit for $story_header"
@@ -824,7 +846,7 @@ CPROMPT
         2>> "${CURRENT_TASK_LOG:-$LOG}" \
         | tee "$LOGS_DIR/commit-$(date '+%Y%m%d-%H%M%S').jsonl" \
         | ralph_stream_filter \
-        || log "WARNING: Auto-commit failed"
+        || log "${YELLOW}WARNING:${RESET} Auto-commit failed"
 }
 
 # ── Suggest improvements ─────────────────────────────────────────────────
@@ -836,7 +858,7 @@ suggest_improvements() {
     local phase_header="$2"
     local milestone="$3"  # "story" or "epic"
 
-    log "REFLECT: Generating suggestions after $milestone completion ($story_header)"
+    log "${BLUE}REFLECT:${RESET} Generating suggestions after $milestone completion (${BOLD}$story_header${RESET})"
 
     if [[ "$DRY_RUN" == true ]]; then
         log "DRY-RUN: Would generate suggestions for $story_header"
@@ -884,7 +906,7 @@ Only modify suggestions.md."
         2>> "${CURRENT_TASK_LOG:-$LOG}" \
         | tee "$LOGS_DIR/suggest-$(date '+%Y%m%d-%H%M%S').jsonl" \
         | ralph_stream_filter \
-        || log "WARNING: Suggestion generation failed"
+        || log "${YELLOW}WARNING:${RESET} Suggestion generation failed"
 }
 
 # ── Main loop ────────────────────────────────────────────────────────────
@@ -897,9 +919,9 @@ main() {
     LOGS_DIR="$PROJECT_DIR/logs"
     mkdir -p "$LOGS_DIR"
 
-    log "═══════════════════════════════════════════"
-    log "Ralph Loop starting in $PROJECT_DIR ($LANG_NAME)"
-    log "═══════════════════════════════════════════"
+    log "${BOLD}${BLUE}═══════════════════════════════════════════${RESET}"
+    log "${BOLD}Ralph Loop starting${RESET} in $PROJECT_DIR (${CYAN}$LANG_NAME${RESET})"
+    log "${BOLD}${BLUE}═══════════════════════════════════════════${RESET}"
     show_plan_summary
 
     local consecutive_failures=0
@@ -912,7 +934,7 @@ main() {
         match=$(find_next_item)
 
         if [[ -z "$match" ]]; then
-            log "══ Plan complete! All items checked. ══"
+            log "${GREEN}${BOLD}══ Plan complete! All items checked. ══${RESET}"
             exit 0
         fi
 
@@ -929,25 +951,25 @@ main() {
         local story_header
         story_header=$(echo "$context" | tail -1)
 
-        log "──────────────────────────────────────────"
-        log "TASK: $checkbox_text"
-        log "PHASE: $phase_header"
-        log "STORY: $story_header"
-        log "LINE: $line_num"
+        log "${DIM}──────────────────────────────────────────${RESET}"
+        log "${BOLD}TASK:${RESET}  ${CYAN}$checkbox_text${RESET}"
+        log "${BOLD}PHASE:${RESET} $phase_header"
+        log "${BOLD}STORY:${RESET} $story_header"
+        log "${DIM}LINE:  $line_num${RESET}"
 
         show_progress "$checkbox_text" "$((consecutive_failures + 1))"
 
         # 3. FAILURE TRACKING — same item failing repeatedly?
         if [[ "$checkbox_text" == "$last_item" ]]; then
             consecutive_failures=$((consecutive_failures + 1))
-            log "RETRY #$consecutive_failures for: $checkbox_text"
+            log "${YELLOW}RETRY #$consecutive_failures${RESET} for: $checkbox_text"
 
             # Reset working tree so retry starts from last known-good state
             reset_working_tree
 
             if [[ $consecutive_failures -ge $MAX_RETRIES ]]; then
-                log "══ STUCK: $MAX_RETRIES consecutive failures on: $checkbox_text ══"
-                log "══ Pausing for human intervention. Fix the issue and re-run. ══"
+                log "${RED}${BOLD}══ STUCK: $MAX_RETRIES consecutive failures on: $checkbox_text ══${RESET}"
+                log "${RED}${BOLD}══ Pausing for human intervention. Fix the issue and re-run. ══${RESET}"
                 reset_working_tree
                 exit 1
             fi
@@ -992,7 +1014,7 @@ main() {
         snapshot_test_state "$snapshot_file"
 
         # 5. RUN — invoke Claude Code with streaming
-        log "Invoking Claude Code..."
+        log "${BLUE}Invoking Claude Code...${RESET}"
         local task_start claude_exit
         task_start=$(date +%s)
         claude_exit=0
@@ -1012,7 +1034,7 @@ main() {
         local task_end duration
         task_end=$(date +%s)
         duration=$((task_end - task_start))
-        log "Claude finished in ${duration}s (exit code $claude_exit)"
+        log "Claude finished in ${BOLD}${duration}s${RESET} (exit code $claude_exit)"
 
         # Parse the result event from the stream
         if [[ -f "$raw_stream" ]]; then
@@ -1020,7 +1042,7 @@ main() {
             result_line=$(tail -1 "$raw_stream")
             result_subtype=$(echo "$result_line" | jq -r '.subtype // empty' 2>/dev/null)
             if [[ "$result_subtype" == "error_max_turns" ]]; then
-                log "WARNING: Claude hit max turns limit (50)"
+                log "${YELLOW}WARNING:${RESET} Claude hit max turns limit (50)"
             fi
 
             # Extract final response to task log
@@ -1037,7 +1059,7 @@ main() {
         fi
 
         if [[ $claude_exit -ne 0 ]]; then
-            log "WARNING: Claude exited with code $claude_exit"
+            log "${YELLOW}WARNING:${RESET} Claude exited with code $claude_exit"
         fi
 
         # 5b. SCOPE CHECK — warn if files modified outside expected directories
@@ -1046,7 +1068,7 @@ main() {
         # 5c. TDD DISCIPLINE — verify RED and GREEN phases happened
         local tdd_issues=""
         tdd_issues=$(verify_tdd_discipline "$snapshot_file" 2>&1) || {
-            log "TDD discipline check failed"
+            log "${YELLOW}TDD discipline check failed${RESET}"
             LAST_FAILURE_OUTPUT="Your previous attempt did not follow TDD discipline: $tdd_issues"
             log "Will retry with TDD feedback"
             rm -f "$snapshot_file" "${snapshot_file}".* 2>/dev/null || true
@@ -1056,7 +1078,7 @@ main() {
         rm -f "$snapshot_file" "${snapshot_file}".* 2>/dev/null || true
 
         # 6. VERIFY — independently run the test suite
-        log "Verifying: $TEST_DIR_CMD..."
+        log "${BLUE}Verifying:${RESET} $TEST_DIR_CMD..."
         local test_exit=0
         local test_output=""
 
@@ -1065,20 +1087,20 @@ main() {
             test_output=$( (cd "$PROJECT_DIR" && eval "$TEST_DIR_CMD") 2>&1) || test_exit=$?
             echo "$test_output" >> "$CURRENT_TASK_LOG"
         else
-            log "No test files yet — skipping verification (first item bootstrap)"
+            log "${DIM}No test files yet — skipping verification (first item bootstrap)${RESET}"
             test_exit=0
         fi
 
         # 7. MARK or RETRY
         if [[ $test_exit -eq 0 ]]; then
-            log "PASS — all tests green"
+            log "${GREEN}${BOLD}PASS${RESET}${GREEN} — all tests green${RESET}"
             run_lint
             run_coverage
             validate_context
             mark_done "$line_num"
             consecutive_failures=0
             LAST_FAILURE_OUTPUT=""
-            log "Marked line $line_num as done"
+            log "${DIM}Marked line $line_num as done${RESET}"
 
             # 8. COMMIT & REFLECT — if story is complete
             if check_story_complete "$line_num"; then
@@ -1087,7 +1109,7 @@ main() {
                 # Check if the entire phase (epic) is also complete
                 if check_phase_complete "$line_num"; then
                     run_integration_tests "$phase_header" || {
-                        log "WARNING: Integration tests failed — continuing but review needed"
+                        log "${YELLOW}WARNING:${RESET} Integration tests failed — continuing but review needed"
                     }
                     suggest_improvements "$story_header" "$phase_header" "epic"
                 else
@@ -1095,11 +1117,11 @@ main() {
                 fi
             fi
         else
-            log "FAIL — tests did not pass (exit code $test_exit)"
+            log "${RED}${BOLD}FAIL${RESET}${RED} — tests did not pass (exit code $test_exit)${RESET}"
             parse_test_failures "$test_output"
             LAST_FAILURE_OUTPUT="$test_output"
-            log "Full output in: $CURRENT_TASK_LOG"
-            log "Will retry this item on next iteration"
+            log "${DIM}Full output in: $CURRENT_TASK_LOG${RESET}"
+            log "${YELLOW}Will retry this item on next iteration${RESET}"
         fi
 
         # Brief pause between iterations
