@@ -411,6 +411,40 @@ fn eval_cps(
                     // Now return the protected result (or re-propagate error)
                     k(protected_result?)
                 }
+                Expr::Symbol(name) if name == "set-car!" || name == "set-cdr!" => {
+                    if elements.len() != 3 {
+                        return Err(format!("{} expects exactly 2 arguments", name));
+                    }
+                    let is_car = name == "set-car!";
+                    let id: Cont = Rc::new(|v| Ok(v));
+                    let target = eval_cps(&elements[1], env, &id)?;
+                    let new_val = eval_cps(&elements[2], env, &id)?;
+                    let updated = match target {
+                        Value::Pair(car, cdr) => {
+                            if is_car {
+                                Value::Pair(Box::new(new_val), cdr)
+                            } else {
+                                Value::Pair(car, Box::new(new_val))
+                            }
+                        }
+                        Value::List(elems) if !elems.is_empty() => {
+                            if is_car {
+                                let mut new_elems = (*elems).clone();
+                                new_elems[0] = new_val;
+                                Value::List(Rc::new(new_elems))
+                            } else {
+                                // set-cdr! on a list: car stays, cdr becomes new_val
+                                Value::Pair(Box::new(elems[0].clone()), Box::new(new_val))
+                            }
+                        }
+                        _ => return Err("expected mutable pair".to_string()),
+                    };
+                    // If the first argument was a symbol, update it in the env
+                    if let Expr::Symbol(var_name) = &elements[1] {
+                        env.update(var_name, updated)?;
+                    }
+                    k(Value::Void)
+                }
                 Expr::Symbol(name) if name == "call/cc" => {
                     if elements.len() != 2 {
                         return Err("call/cc expects exactly 1 argument".to_string());
@@ -571,7 +605,7 @@ fn expr_to_value(expr: &Expr) -> Result<Value, String> {
         Expr::Symbol(s) => Ok(Value::Symbol(s.clone())),
         Expr::List(elements) => {
             let values: Result<Vec<Value>, String> = elements.iter().map(expr_to_value).collect();
-            Ok(Value::List(values?))
+            Ok(Value::List(Rc::new(values?)))
         }
     }
 }

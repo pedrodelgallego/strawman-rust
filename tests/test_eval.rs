@@ -1,6 +1,7 @@
 extern crate gag;
 
 use std::rc::Rc;
+use std::rc::Rc as StdRc;
 use strawman::env::{Env, Value};
 use strawman::eval::straw_eval;
 use strawman::parser::Expr;
@@ -101,11 +102,11 @@ fn eval_quote_list() {
     let result = straw_eval(&expr, &env).unwrap();
     assert_eq!(
         result,
-        Value::List(vec![
+        Value::List(StdRc::new(vec![
             Value::Number(1.0),
             Value::Number(2.0),
             Value::Number(3.0),
-        ])
+        ]))
     );
 }
 
@@ -126,13 +127,13 @@ fn eval_quote_nested() {
     let result = straw_eval(&expr, &env).unwrap();
     assert_eq!(
         result,
-        Value::List(vec![
+        Value::List(StdRc::new(vec![
             Value::Symbol("a".to_string()),
-            Value::List(vec![
+            Value::List(StdRc::new(vec![
                 Value::Symbol("b".to_string()),
                 Value::Symbol("c".to_string()),
-            ]),
-        ])
+            ])),
+        ]))
     );
 }
 
@@ -145,7 +146,7 @@ fn eval_quote_empty_list() {
         Expr::List(vec![]),
     ]);
     let result = straw_eval(&expr, &env).unwrap();
-    assert_eq!(result, Value::List(vec![]));
+    assert_eq!(result, Value::List(StdRc::new(vec![])));
 }
 
 #[test]
@@ -1180,12 +1181,12 @@ fn eval_e2_5_map_with_lambda() {
     let expr = parse("(begin (define (map f lst) (if (null? lst) (quote ()) (cons (f (car lst)) (map f (cdr lst))))) (map (lambda (x) (* x x)) (quote (1 2 3 4))))").unwrap();
     let result = straw_eval(&expr, &env).unwrap();
     // Expected: (1 4 9 16) — cons onto List([]) produces List
-    let expected = Value::List(vec![
+    let expected = Value::List(StdRc::new(vec![
         Value::Number(1.0),
         Value::Number(4.0),
         Value::Number(9.0),
         Value::Number(16.0),
-    ]);
+    ]));
     assert_eq!(result, expected);
 }
 
@@ -1211,11 +1212,11 @@ fn eval_e2_5_filter_with_lambda() {
     let expr = parse("(begin (define (filter p lst) (if (null? lst) (quote ()) (if (p (car lst)) (cons (car lst) (filter p (cdr lst))) (filter p (cdr lst))))) (filter (lambda (x) (> x 2)) (quote (1 2 3 4 5))))").unwrap();
     let result = straw_eval(&expr, &env).unwrap();
     // Expected: (3 4 5)
-    let expected = Value::List(vec![
+    let expected = Value::List(StdRc::new(vec![
         Value::Number(3.0),
         Value::Number(4.0),
         Value::Number(5.0),
-    ]);
+    ]));
     assert_eq!(result, expected);
 }
 
@@ -1579,4 +1580,286 @@ fn eval_e3_5_unwind_protect_acceptance() {
 
     assert_eq!(result, Value::StringLit("err".to_string()));
     assert_eq!(output, "cleaned");
+}
+
+// ── E4.1 — Shared mutation between closures, lambda captures box ──
+
+#[test]
+fn eval_e4_1_shared_mutation() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // E4.1 Test Matrix: Shared mutation
+    // (begin (define x 0) (define inc (lambda () (set! x (+ x 1)))) (define get (lambda () x)) (inc) (inc) (get)) → 2
+    let env = default_env();
+    let expr = parse("(begin (define x 0) (define inc (lambda () (set! x (+ x 1)))) (define get (lambda () x)) (inc) (inc) (get))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(2.0));
+}
+
+#[test]
+fn eval_e4_1_lambda_captures_box() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // E4.1 Test Matrix: Lambda captures box
+    // (begin (define (make) (define n 0) (list (lambda () (set! n (+ n 1)) n) (lambda () n))) (define pair (make)) ((car pair)) ((car pair)) ((car (cdr pair)))) → 2
+    // Intermediate: ((car pair)) → 1, ((car pair)) → 2, ((car (cdr pair))) → 2
+    let env = default_env();
+    // Set up make function and pair
+    let setup = parse("(begin (define (make) (define n 0) (list (lambda () (set! n (+ n 1)) n) (lambda () n))) (define pair (make)))").unwrap();
+    straw_eval(&setup, &env).unwrap();
+
+    // First call to inc: ((car pair)) → 1
+    let expr1 = parse("((car pair))").unwrap();
+    let result1 = straw_eval(&expr1, &env).unwrap();
+    assert_eq!(result1, Value::Number(1.0));
+
+    // Second call to inc: ((car pair)) → 2
+    let expr2 = parse("((car pair))").unwrap();
+    let result2 = straw_eval(&expr2, &env).unwrap();
+    assert_eq!(result2, Value::Number(2.0));
+
+    // Call to get: ((car (cdr pair))) → 2
+    let expr3 = parse("((car (cdr pair)))").unwrap();
+    let result3 = straw_eval(&expr3, &env).unwrap();
+    assert_eq!(result3, Value::Number(2.0));
+}
+
+#[test]
+fn eval_e4_1_acceptance_shared_closure_mutation() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // E4.1 Acceptance Criterion:
+    // Given two closures sharing a mutable variable, when one mutates it,
+    // the other sees the mutation.
+    let env = default_env();
+    let expr = parse("(begin (define x 0) (define inc (lambda () (set! x (+ x 1)))) (define get (lambda () x)) (inc) (inc) (inc) (get))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(3.0));
+}
+
+// ── E4.2 — set-car!, set-cdr!, non-pair error ──
+
+#[test]
+fn eval_e4_2_set_car() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // (begin (define p (cons 1 2)) (set-car! p 10) (car p)) → 10
+    let env = default_env();
+    let expr = parse("(begin (define p (cons 1 2)) (set-car! p 10) (car p))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(10.0));
+}
+
+#[test]
+fn eval_e4_2_set_cdr() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // (begin (define p (cons 1 2)) (set-cdr! p 20) (cdr p)) → 20
+    let env = default_env();
+    let expr = parse("(begin (define p (cons 1 2)) (set-cdr! p 20) (cdr p))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(20.0));
+}
+
+#[test]
+fn eval_e4_2_non_pair_error() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // (set-car! 42 1) → Error: expected mutable pair
+    let env = default_env();
+    let expr = parse("(set-car! 42 1)").unwrap();
+    let result = straw_eval(&expr, &env);
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), "expected mutable pair");
+}
+
+#[test]
+fn eval_e4_2_acceptance_set_car_pair_display() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // Acceptance: (begin (define p (cons 1 2)) (set-car! p 99) p) → (99 . 2)
+    let env = default_env();
+    let expr = parse("(begin (define p (cons 1 2)) (set-car! p 99) p)").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Pair(Box::new(Value::Number(99.0)), Box::new(Value::Number(2.0))));
+}
+
+// ── E4.3 — eq? vs equal? ──
+
+#[test]
+fn eval_e4_3_eq_same_symbol() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // (eq? 'a 'a) → #t
+    let env = default_env();
+    let expr = parse("(eq? (quote a) (quote a))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Boolean(true));
+}
+
+#[test]
+fn eval_e4_3_eq_same_number() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // (eq? 42 42) → #t
+    let env = default_env();
+    let expr = parse("(eq? 42 42)").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Boolean(true));
+}
+
+#[test]
+fn eval_e4_3_eq_different_lists() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // (eq? (list 1) (list 1)) → #f
+    let env = default_env();
+    let expr = parse("(eq? (list 1) (list 1))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Boolean(false));
+}
+
+#[test]
+fn eval_e4_3_eq_same_binding() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // (begin (define x (list 1)) (eq? x x)) → #t
+    let env = default_env();
+    let expr = parse("(begin (define x (list 1)) (eq? x x))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Boolean(true));
+}
+
+#[test]
+fn eval_e4_3_equal_lists() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // (equal? (list 1 2) (list 1 2)) → #t
+    let env = default_env();
+    let expr = parse("(equal? (list 1 2) (list 1 2))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Boolean(true));
+}
+
+#[test]
+fn eval_e4_3_equal_nested() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // (equal? '(1 (2 3)) '(1 (2 3))) → #t
+    let env = default_env();
+    let expr = parse("(equal? (quote (1 (2 3))) (quote (1 (2 3))))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Boolean(true));
+}
+
+#[test]
+fn eval_e4_3_equal_different() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // (equal? '(1 2) '(1 3)) → #f
+    let env = default_env();
+    let expr = parse("(equal? (quote (1 2)) (quote (1 3)))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Boolean(false));
+}
+
+#[test]
+fn eval_e4_3_acceptance_eq_vs_equal() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // Acceptance Criterion:
+    // (begin (define a (list 1 2)) (define b (list 1 2)) (list (eq? a b) (equal? a b)))
+    // → (#f #t)
+    let env = default_env();
+    let expr = parse("(begin (define a (list 1 2)) (define b (list 1 2)) (list (eq? a b) (equal? a b)))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    // Expected: list of #f, #t
+    match &result {
+        Value::List(elems) => {
+            assert_eq!(elems.len(), 2);
+            assert_eq!(elems[0], Value::Boolean(false));
+            assert_eq!(elems[1], Value::Boolean(true));
+        }
+        _ => panic!("expected list, got: {:?}", result),
+    }
+}
+
+// ── E4.4 — Vectors ──
+
+#[test]
+fn eval_e4_4_make_and_ref() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // (begin (define v (make-vector 3 0)) (vector-ref v 0)) → 0
+    let env = default_env();
+    let expr = parse("(begin (define v (make-vector 3 0)) (vector-ref v 0))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(0.0));
+}
+
+#[test]
+fn eval_e4_4_set_and_ref() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // (begin (define v (make-vector 3 0)) (vector-set! v 1 42) (vector-ref v 1)) → 42
+    let env = default_env();
+    let expr = parse("(begin (define v (make-vector 3 0)) (vector-set! v 1 42) (vector-ref v 1))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(42.0));
+}
+
+#[test]
+fn eval_e4_4_length() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // (vector-length (make-vector 5)) → 5
+    let env = default_env();
+    let expr = parse("(vector-length (make-vector 5))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(5.0));
+}
+
+#[test]
+fn eval_e4_4_type_pred_true() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // (vector? (make-vector 1)) → #t
+    let env = default_env();
+    let expr = parse("(vector? (make-vector 1))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Boolean(true));
+}
+
+#[test]
+fn eval_e4_4_type_pred_false() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // (vector? '(1 2)) → #f
+    let env = default_env();
+    let expr = parse("(vector? (quote (1 2)))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Boolean(false));
+}
+
+#[test]
+fn eval_e4_4_out_of_bounds() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // (vector-ref (make-vector 3) 5) → Error: index out of range
+    let env = default_env();
+    let expr = parse("(vector-ref (make-vector 3) 5)").unwrap();
+    let result = straw_eval(&expr, &env);
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), "index out of range");
+}
+
+#[test]
+fn eval_e4_4_acceptance_set_and_ref() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // Acceptance: (begin (define v (make-vector 3 0)) (vector-set! v 2 99) (vector-ref v 2)) → 99
+    let env = default_env();
+    let expr = parse("(begin (define v (make-vector 3 0)) (vector-set! v 2 99) (vector-ref v 2))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(99.0));
 }

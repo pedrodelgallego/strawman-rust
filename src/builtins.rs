@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::rc::Rc;
 use crate::env::{Env, Value};
 
@@ -145,6 +146,22 @@ pub fn default_env() -> Rc<Env> {
         Ok(Value::Boolean(a == b))
     }));
 
+    env.set("eq?", Value::Builtin("eq?".to_string(), |args| {
+        if args.len() != 2 {
+            return Err(format!("arity mismatch: expected 2, got {}", args.len()));
+        }
+        let result = match (&args[0], &args[1]) {
+            (Value::Number(a), Value::Number(b)) => a == b,
+            (Value::Boolean(a), Value::Boolean(b)) => a == b,
+            (Value::Symbol(a), Value::Symbol(b)) => a == b,
+            (Value::StringLit(a), Value::StringLit(b)) => a == b,
+            (Value::List(a), Value::List(b)) => Rc::ptr_eq(a, b),
+            (Value::Void, Value::Void) => true,
+            _ => false,
+        };
+        Ok(Value::Boolean(result))
+    }));
+
     env.set("equal?", Value::Builtin("equal?".to_string(), |args| {
         if args.len() != 2 {
             return Err(format!("arity mismatch: expected 2, got {}", args.len()));
@@ -153,7 +170,7 @@ pub fn default_env() -> Rc<Env> {
     }));
 
     env.set("list", Value::Builtin("list".to_string(), |args| {
-        Ok(Value::List(args))
+        Ok(Value::List(Rc::new(args)))
     }));
 
     env.set("cons", Value::Builtin("cons".to_string(), |args| {
@@ -163,9 +180,10 @@ pub fn default_env() -> Rc<Env> {
         let head = args[0].clone();
         let tail = args[1].clone();
         match tail {
-            Value::List(mut elems) => {
-                elems.insert(0, head);
-                Ok(Value::List(elems))
+            Value::List(elems) => {
+                let mut new_elems = (*elems).clone();
+                new_elems.insert(0, head);
+                Ok(Value::List(Rc::new(new_elems)))
             }
             _ => Ok(Value::Pair(Box::new(head), Box::new(tail))),
         }
@@ -187,7 +205,7 @@ pub fn default_env() -> Rc<Env> {
             return Err(format!("arity mismatch: expected 1, got {}", args.len()));
         }
         match &args[0] {
-            Value::List(elems) if !elems.is_empty() => Ok(Value::List(elems[1..].to_vec())),
+            Value::List(elems) if !elems.is_empty() => Ok(Value::List(Rc::new(elems[1..].to_vec()))),
             Value::Pair(_, tail) => Ok(*tail.clone()),
             _ => Err("cdr: expected pair".to_string()),
         }
@@ -310,6 +328,79 @@ pub fn default_env() -> Rc<Env> {
             return Err("division by zero".to_string());
         }
         Ok(Value::Number(a % b))
+    }));
+
+    env.set("make-vector", Value::Builtin("make-vector".to_string(), |args| {
+        if args.is_empty() || args.len() > 2 {
+            return Err(format!("arity mismatch: expected 1 or 2, got {}", args.len()));
+        }
+        let size = match &args[0] {
+            Value::Number(n) => *n as usize,
+            _ => return Err("expected number".to_string()),
+        };
+        let fill = if args.len() == 2 {
+            args[1].clone()
+        } else {
+            Value::Number(0.0)
+        };
+        Ok(Value::Vector(Rc::new(RefCell::new(vec![fill; size]))))
+    }));
+
+    env.set("vector-ref", Value::Builtin("vector-ref".to_string(), |args| {
+        if args.len() != 2 {
+            return Err(format!("arity mismatch: expected 2, got {}", args.len()));
+        }
+        let vec = match &args[0] {
+            Value::Vector(v) => v.clone(),
+            _ => return Err("expected vector".to_string()),
+        };
+        let idx = match &args[1] {
+            Value::Number(n) => *n as usize,
+            _ => return Err("expected number".to_string()),
+        };
+        let borrowed = vec.borrow();
+        if idx >= borrowed.len() {
+            return Err("index out of range".to_string());
+        }
+        Ok(borrowed[idx].clone())
+    }));
+
+    env.set("vector-set!", Value::Builtin("vector-set!".to_string(), |args| {
+        if args.len() != 3 {
+            return Err(format!("arity mismatch: expected 3, got {}", args.len()));
+        }
+        let vec = match &args[0] {
+            Value::Vector(v) => v.clone(),
+            _ => return Err("expected vector".to_string()),
+        };
+        let idx = match &args[1] {
+            Value::Number(n) => *n as usize,
+            _ => return Err("expected number".to_string()),
+        };
+        let val = args[2].clone();
+        let mut borrowed = vec.borrow_mut();
+        if idx >= borrowed.len() {
+            return Err("index out of range".to_string());
+        }
+        borrowed[idx] = val;
+        Ok(Value::Void)
+    }));
+
+    env.set("vector-length", Value::Builtin("vector-length".to_string(), |args| {
+        if args.len() != 1 {
+            return Err(format!("arity mismatch: expected 1, got {}", args.len()));
+        }
+        match &args[0] {
+            Value::Vector(v) => Ok(Value::Number(v.borrow().len() as f64)),
+            _ => Err("expected vector".to_string()),
+        }
+    }));
+
+    env.set("vector?", Value::Builtin("vector?".to_string(), |args| {
+        if args.len() != 1 {
+            return Err(format!("arity mismatch: expected 1, got {}", args.len()));
+        }
+        Ok(Value::Boolean(matches!(&args[0], Value::Vector(_))))
     }));
 
     env

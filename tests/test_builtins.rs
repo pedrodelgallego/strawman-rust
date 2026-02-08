@@ -282,11 +282,11 @@ fn e1_13_cons_onto_list() {
     let result = straw_eval(&expr, &env).unwrap();
     assert_eq!(
         result,
-        strawman::env::Value::List(vec![
+        strawman::env::Value::List(std::rc::Rc::new(vec![
             strawman::env::Value::Number(1.0),
             strawman::env::Value::Number(2.0),
             strawman::env::Value::Number(3.0),
-        ])
+        ]))
     );
 }
 
@@ -324,10 +324,10 @@ fn e1_13_cdr() {
     let result = straw_eval(&expr, &env).unwrap();
     assert_eq!(
         result,
-        strawman::env::Value::List(vec![
+        strawman::env::Value::List(std::rc::Rc::new(vec![
             strawman::env::Value::Symbol("b".to_string()),
             strawman::env::Value::Symbol("c".to_string()),
-        ])
+        ]))
     );
 }
 
@@ -402,7 +402,7 @@ fn e1_13_list_empty() {
     let env = default_env();
     let expr = parse("(list)").unwrap();
     let result = straw_eval(&expr, &env).unwrap();
-    assert_eq!(result, strawman::env::Value::List(vec![]));
+    assert_eq!(result, strawman::env::Value::List(std::rc::Rc::new(vec![])));
 }
 
 #[test]
@@ -413,11 +413,11 @@ fn e1_13_list_many() {
     let result = straw_eval(&expr, &env).unwrap();
     assert_eq!(
         result,
-        strawman::env::Value::List(vec![
+        strawman::env::Value::List(std::rc::Rc::new(vec![
             strawman::env::Value::Number(1.0),
             strawman::env::Value::Number(2.0),
             strawman::env::Value::Number(3.0),
-        ])
+        ]))
     );
 }
 
