@@ -33,3 +33,8 @@ doc/
 logs/
 *.jsonl
 ralph.log
+
+
+# Added by cargo
+
+/target

@@ -1,15 +1,15 @@
 {
-  "language": "racket",
-  "file_extension": ".rkt",
-  "run_command": "racket",
-  "test_command": "raco test",
-  "test_dir_command": "raco test tests/",
-  "test_framework": "rackunit",
+  "language": "rust",
+  "file_extension": ".rs",
+  "run_command": "cargo run --",
+  "test_command": "cargo test",
+  "test_dir_command": "cargo test",
+  "test_framework": "rust built-in (#[cfg(test)] + #[test])",
   "source_dir": "src",
   "test_dir": "tests",
-  "entry_point": "strawman.rkt",
-  "test_file_pattern": "test-{module}",
+  "entry_point": "src/main.rs",
+  "test_file_pattern": "test_{module}",
   "source_extension": ".straw",
-  "module_instructions": "Each source file must use `#lang racket` and `provide` its public API.\nEach test file must `require rackunit` and the module under test.",
-  "file_preamble": "#lang racket"
+  "module_instructions": "Each source module lives in src/ as a separate .rs file and is declared in src/main.rs via `mod`. Tests use either inline #[cfg(test)] modules or integration tests in tests/. Use `use crate::module_name;` for imports between modules.",
+  "file_preamble": ""
 }
