@@ -31,16 +31,40 @@ pub fn straw_eval(expr: &Expr, env: &Rc<Env>) -> Result<Value, String> {
                     Ok(result)
                 }
                 Expr::Symbol(name) if name == "define" => {
-                    if elements.len() != 3 {
-                        return Err("define expects exactly 2 arguments".to_string());
-                    }
                     match &elements[1] {
                         Expr::Symbol(var_name) => {
+                            if elements.len() != 3 {
+                                return Err("define expects exactly 2 arguments".to_string());
+                            }
                             let val = straw_eval(&elements[2], env)?;
                             env.set(var_name, val);
                             Ok(Value::Void)
                         }
-                        _ => Err("define: first argument must be a symbol".to_string()),
+                        Expr::List(name_and_params) => {
+                            // (define (f params...) body...) shorthand
+                            if name_and_params.is_empty() {
+                                return Err("define: missing function name".to_string());
+                            }
+                            if elements.len() < 3 {
+                                return Err("define: missing body".to_string());
+                            }
+                            let func_name = match &name_and_params[0] {
+                                Expr::Symbol(s) => s,
+                                _ => return Err("define: function name must be a symbol".to_string()),
+                            };
+                            let mut params = Vec::new();
+                            for p in &name_and_params[1..] {
+                                match p {
+                                    Expr::Symbol(s) => params.push(s.clone()),
+                                    _ => return Err("define: parameter must be a symbol".to_string()),
+                                }
+                            }
+                            let body = elements[2..].to_vec();
+                            let closure = Value::Closure(params, body, Rc::clone(env));
+                            env.set(func_name, closure);
+                            Ok(Value::Void)
+                        }
+                        _ => Err("define: first argument must be a symbol or list".to_string()),
                     }
                 }
                 Expr::Symbol(name) if name == "set!" => {
@@ -101,6 +125,125 @@ pub fn straw_eval(expr: &Expr, env: &Rc<Env>) -> Result<Value, String> {
                         }
                     }
                     straw_eval(&args[args.len() - 1], env)
+                }
+                Expr::Symbol(name) if name == "let" => {
+                    if elements.len() < 3 {
+                        return Err("let expects at least 2 arguments".to_string());
+                    }
+                    let bindings_expr = match &elements[1] {
+                        Expr::List(b) => b,
+                        _ => return Err("let: expected bindings list".to_string()),
+                    };
+                    // Evaluate all init expressions in the OUTER env (parallel semantics)
+                    let mut names = Vec::new();
+                    let mut vals = Vec::new();
+                    for binding in bindings_expr {
+                        match binding {
+                            Expr::List(pair) if pair.len() == 2 => {
+                                match &pair[0] {
+                                    Expr::Symbol(s) => {
+                                        let val = straw_eval(&pair[1], env)?;
+                                        names.push(s.clone());
+                                        vals.push(val);
+                                    }
+                                    _ => return Err("let: binding name must be a symbol".to_string()),
+                                }
+                            }
+                            _ => return Err("malformed binding".to_string()),
+                        }
+                    }
+                    // Create child env with all bindings
+                    let child = Env::with_parent(Rc::clone(env));
+                    for (name, val) in names.into_iter().zip(vals) {
+                        child.set(&name, val);
+                    }
+                    let child = Rc::new(child);
+                    // Evaluate body (implicit begin)
+                    let body = &elements[2..];
+                    let mut result = Value::Void;
+                    for expr in body {
+                        result = straw_eval(expr, &child)?;
+                    }
+                    Ok(result)
+                }
+                Expr::Symbol(name) if name == "let*" => {
+                    if elements.len() < 3 {
+                        return Err("let* expects at least 2 arguments".to_string());
+                    }
+                    let bindings_expr = match &elements[1] {
+                        Expr::List(b) => b,
+                        _ => return Err("let*: expected bindings list".to_string()),
+                    };
+                    // Sequential semantics: each binding sees all previous ones
+                    let mut current_env = Rc::clone(env);
+                    for binding in bindings_expr {
+                        match binding {
+                            Expr::List(pair) if pair.len() == 2 => {
+                                match &pair[0] {
+                                    Expr::Symbol(s) => {
+                                        let val = straw_eval(&pair[1], &current_env)?;
+                                        let new_env = Env::with_parent(current_env);
+                                        new_env.set(s, val);
+                                        current_env = Rc::new(new_env);
+                                    }
+                                    _ => return Err("let*: binding name must be a symbol".to_string()),
+                                }
+                            }
+                            _ => return Err("malformed binding".to_string()),
+                        }
+                    }
+                    // Evaluate body (implicit begin) in final env
+                    let body = &elements[2..];
+                    let mut result = Value::Void;
+                    for expr in body {
+                        result = straw_eval(expr, &current_env)?;
+                    }
+                    Ok(result)
+                }
+                Expr::Symbol(name) if name == "letrec" => {
+                    if elements.len() < 3 {
+                        return Err("letrec expects at least 2 arguments".to_string());
+                    }
+                    let bindings_expr = match &elements[1] {
+                        Expr::List(b) => b,
+                        _ => return Err("letrec: expected bindings list".to_string()),
+                    };
+                    // Create a new env with all names bound to Void (placeholder)
+                    let letrec_env = Rc::new(Env::with_parent(Rc::clone(env)));
+                    let mut names = Vec::new();
+                    for binding in bindings_expr {
+                        match binding {
+                            Expr::List(pair) if pair.len() == 2 => {
+                                match &pair[0] {
+                                    Expr::Symbol(s) => {
+                                        letrec_env.set(s, Value::Void);
+                                        names.push(s.clone());
+                                    }
+                                    _ => return Err("letrec: binding name must be a symbol".to_string()),
+                                }
+                            }
+                            _ => return Err("malformed binding".to_string()),
+                        }
+                    }
+                    // Evaluate init expressions in the letrec env (so lambdas close over it)
+                    let mut vals = Vec::new();
+                    for binding in bindings_expr {
+                        if let Expr::List(pair) = binding {
+                            let val = straw_eval(&pair[1], &letrec_env)?;
+                            vals.push(val);
+                        }
+                    }
+                    // Update bindings with actual values
+                    for (name, val) in names.iter().zip(vals) {
+                        letrec_env.set(name, val);
+                    }
+                    // Evaluate body (implicit begin)
+                    let body = &elements[2..];
+                    let mut result = Value::Void;
+                    for expr in body {
+                        result = straw_eval(expr, &letrec_env)?;
+                    }
+                    Ok(result)
                 }
                 Expr::Symbol(name) if name == "if" => {
                     if elements.len() < 3 || elements.len() > 4 {

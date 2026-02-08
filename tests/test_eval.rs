@@ -852,3 +852,407 @@ fn eval_e1_14_or_empty() {
     let result = straw_eval(&expr, &env).unwrap();
     assert_eq!(result, Value::Boolean(false));
 }
+
+// ── E2.1 — let ──
+
+#[test]
+fn eval_e2_1_let_simple() {
+    use strawman::parser::parse;
+    // (let ((x 1)) x) → 1
+    let env = Rc::new(Env::new());
+    let expr = parse("(let ((x 1)) x)").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(1.0));
+}
+
+#[test]
+fn eval_e2_1_let_two_bindings() {
+    use strawman::parser::parse;
+    // (let ((x 1) (y 2)) (+ x y)) → 3
+    let env = make_test_env();
+    let expr = parse("(let ((x 1) (y 2)) (+ x y))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(3.0));
+}
+
+#[test]
+fn eval_e2_1_let_parallel_semantics() {
+    use strawman::parser::parse;
+    // (let ((x 1) (y x)) y) with no outer x → Error: unbound variable
+    let env = Rc::new(Env::new());
+    let expr = parse("(let ((x 1) (y x)) y)").unwrap();
+    let result = straw_eval(&expr, &env);
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(
+        err.contains("unbound variable"),
+        "expected 'unbound variable' error, got: {err}"
+    );
+}
+
+#[test]
+fn eval_e2_1_let_shadowing() {
+    use strawman::parser::parse;
+    // (begin (define x 10) (let ((x 20)) x)) → 20
+    let env = make_test_env();
+    let expr = parse("(begin (define x 10) (let ((x 20)) x))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(20.0));
+}
+
+#[test]
+fn eval_e2_1_let_outer_unchanged() {
+    use strawman::parser::parse;
+    // (begin (define x 10) (let ((x 20)) x) x) → 10
+    let env = make_test_env();
+    let expr = parse("(begin (define x 10) (let ((x 20)) x) x)").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(10.0));
+}
+
+#[test]
+fn eval_e2_1_let_body_implicit_begin() {
+    use strawman::parser::parse;
+    // (let ((x 1)) (define y 2) (+ x y)) → 3
+    let env = make_test_env();
+    let expr = parse("(let ((x 1)) (define y 2) (+ x y))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(3.0));
+}
+
+#[test]
+fn eval_e2_1_let_nested() {
+    use strawman::parser::parse;
+    // (let ((x 1)) (let ((y 2)) (+ x y))) → 3
+    let env = make_test_env();
+    let expr = parse("(let ((x 1)) (let ((y 2)) (+ x y)))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(3.0));
+}
+
+#[test]
+fn eval_e2_1_let_empty_bindings() {
+    use strawman::parser::parse;
+    // (let () 42) → 42
+    let env = Rc::new(Env::new());
+    let expr = parse("(let () 42)").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(42.0));
+}
+
+#[test]
+fn eval_e2_1_let_malformed_binding() {
+    use strawman::parser::parse;
+    // (let (x 1) x) → Error: malformed binding
+    let env = Rc::new(Env::new());
+    let expr = parse("(let (x 1) x)").unwrap();
+    let result = straw_eval(&expr, &env);
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(
+        err.contains("malformed binding"),
+        "expected 'malformed binding' error, got: {err}"
+    );
+}
+
+// ── E2.2 — let* ──
+
+#[test]
+fn eval_e2_2_let_star_sequential() {
+    use strawman::parser::parse;
+    // (let* ((x 1) (y (+ x 1))) y) → 2
+    let env = make_test_env();
+    let expr = parse("(let* ((x 1) (y (+ x 1))) y)").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(2.0));
+}
+
+#[test]
+fn eval_e2_2_let_star_three_deps() {
+    use strawman::parser::parse;
+    // (let* ((a 1) (b (+ a 1)) (c (+ b 1))) c) → 3
+    let env = make_test_env();
+    let expr = parse("(let* ((a 1) (b (+ a 1)) (c (+ b 1))) c)").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(3.0));
+}
+
+#[test]
+fn eval_e2_2_let_star_shadow_across() {
+    use strawman::parser::parse;
+    // (let* ((x 1) (x (+ x 1))) x) → 2
+    let env = make_test_env();
+    let expr = parse("(let* ((x 1) (x (+ x 1))) x)").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(2.0));
+}
+
+#[test]
+fn eval_e2_2_let_star_empty() {
+    use strawman::parser::parse;
+    // (let* () 42) → 42
+    let env = Rc::new(Env::new());
+    let expr = parse("(let* () 42)").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(42.0));
+}
+
+#[test]
+fn eval_e2_2_let_star_acceptance() {
+    use strawman::parser::parse;
+    // Acceptance criteria: (let* ((x 10) (y (* x 2))) y) → 20
+    let env = make_test_env();
+    let expr = parse("(let* ((x 10) (y (* x 2))) y)").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(20.0));
+}
+
+// ── E2.3 — letrec ──
+
+#[test]
+fn eval_e2_3_letrec_self_recursive_factorial() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // E2.3 Test Matrix: Self-recursive (factorial)
+    // (letrec ((f (lambda (n) (if (<= n 0) 1 (* n (f (- n 1))))))) (f 5)) → 120
+    let env = default_env();
+    let expr = parse("(letrec ((f (lambda (n) (if (<= n 0) 1 (* n (f (- n 1))))))) (f 5))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(120.0));
+}
+
+#[test]
+fn eval_e2_3_letrec_mutual_recursion_even() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // E2.3 Test Matrix: Mutual recursion (even?/odd?)
+    // (letrec ((even? (lambda (n) (if (= n 0) #t (odd? (- n 1)))))
+    //          (odd? (lambda (n) (if (= n 0) #f (even? (- n 1))))))
+    //   (even? 4)) → #t
+    let env = default_env();
+    let expr = parse("(letrec ((even? (lambda (n) (if (= n 0) #t (odd? (- n 1))))) (odd? (lambda (n) (if (= n 0) #f (even? (- n 1)))))) (even? 4))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Boolean(true));
+}
+
+#[test]
+fn eval_e2_3_letrec_mutual_recursion_even_10() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // E2.3 Acceptance Criterion: (even? 10) → #t
+    let env = default_env();
+    let expr = parse("(letrec ((even? (lambda (n) (if (= n 0) #t (odd? (- n 1))))) (odd? (lambda (n) (if (= n 0) #f (even? (- n 1)))))) (even? 10))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Boolean(true));
+}
+
+#[test]
+fn eval_e2_3_letrec_non_lambda_value() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // E2.3 Test Matrix: Non-lambda value
+    // (letrec ((x 42)) x) → 42
+    let env = default_env();
+    let expr = parse("(letrec ((x 42)) x)").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(42.0));
+}
+
+// ── E2.4 — Define shorthand ──
+
+#[test]
+fn eval_e2_4_define_shorthand_simple() {
+    use strawman::parser::parse;
+    // E2.4 Test Matrix: Simple
+    // (begin (define (f x) x) (f 42)) → 42
+    let env = Rc::new(Env::new());
+    let expr = parse("(begin (define (f x) x) (f 42))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(42.0));
+}
+
+#[test]
+fn eval_e2_4_define_shorthand_multi_param() {
+    use strawman::parser::parse;
+    // E2.4 Test Matrix: Multi-param
+    // (begin (define (add a b) (+ a b)) (add 3 4)) → 7
+    let env = make_test_env();
+    let expr = parse("(begin (define (add a b) (+ a b)) (add 3 4))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(7.0));
+}
+
+#[test]
+fn eval_e2_4_define_shorthand_with_body() {
+    use strawman::parser::parse;
+    // E2.4 Test Matrix: With body
+    // (begin (define (g x) (define y 1) (+ x y)) (g 5)) → 6
+    let env = make_test_env();
+    let expr = parse("(begin (define (g x) (define y 1) (+ x y)) (g 5))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(6.0));
+}
+
+#[test]
+fn eval_e2_4_define_shorthand_recursive() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // E2.4 Test Matrix: Recursive
+    // (begin (define (fact n) (if (<= n 1) 1 (* n (fact (- n 1))))) (fact 5)) → 120
+    let env = default_env();
+    let expr = parse("(begin (define (fact n) (if (<= n 1) 1 (* n (fact (- n 1))))) (fact 5))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(120.0));
+}
+
+#[test]
+fn eval_e2_4_define_shorthand_no_params() {
+    use strawman::parser::parse;
+    // E2.4 Test Matrix: No params
+    // (begin (define (f) 42) (f)) → 42
+    let env = Rc::new(Env::new());
+    let expr = parse("(begin (define (f) 42) (f))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(42.0));
+}
+
+#[test]
+fn eval_e2_4_define_shorthand_acceptance() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // E2.4 Acceptance Criterion:
+    // (begin (define (square x) (* x x)) (square 9)) → 81
+    let env = default_env();
+    let expr = parse("(begin (define (square x) (* x x)) (square 9))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(81.0));
+}
+
+// ── E2.5 — Integration ──
+
+#[test]
+fn eval_e2_5_factorial_0() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // E2.5 Test Matrix: Factorial 0
+    // (begin (define (fact n) (if (<= n 1) 1 (* n (fact (- n 1))))) (fact 0)) → 1
+    let env = default_env();
+    let expr = parse("(begin (define (fact n) (if (<= n 1) 1 (* n (fact (- n 1))))) (fact 0))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(1.0));
+}
+
+#[test]
+fn eval_e2_5_factorial_10() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // E2.5 Test Matrix: Factorial 10
+    // Define fact in the env, then call (fact 10) → 3628800
+    let env = default_env();
+    let define_expr = parse("(define (fact n) (if (<= n 1) 1 (* n (fact (- n 1)))))").unwrap();
+    straw_eval(&define_expr, &env).unwrap();
+    let expr = parse("(fact 10)").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(3628800.0));
+}
+
+#[test]
+fn eval_e2_5_fibonacci_10() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // E2.5 Test Matrix: Fibonacci
+    // (begin (define (fib n) (if (<= n 1) n (+ (fib (- n 1)) (fib (- n 2))))) (fib 10)) → 55
+    let env = default_env();
+    let expr = parse("(begin (define (fib n) (if (<= n 1) n (+ (fib (- n 1)) (fib (- n 2))))) (fib 10))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(55.0));
+}
+
+#[test]
+fn eval_e2_5_map_with_lambda() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // E2.5 Test Matrix: Map
+    // (begin (define (map f lst) (if (null? lst) '() (cons (f (car lst)) (map f (cdr lst))))) (map (lambda (x) (* x x)) '(1 2 3 4))) → '(1 4 9 16)
+    let env = default_env();
+    let expr = parse("(begin (define (map f lst) (if (null? lst) (quote ()) (cons (f (car lst)) (map f (cdr lst))))) (map (lambda (x) (* x x)) (quote (1 2 3 4))))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    // Expected: (1 4 9 16) — cons onto List([]) produces List
+    let expected = Value::List(vec![
+        Value::Number(1.0),
+        Value::Number(4.0),
+        Value::Number(9.0),
+        Value::Number(16.0),
+    ]);
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn eval_e2_5_closure_scope_lexical() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // E2.5 Test Matrix: Closure scope (lexical vs dynamic)
+    // (begin (define x 10) (define (f) x) (define (g) (define x 20) (f)) (g)) → 10
+    let env = default_env();
+    let expr = parse("(begin (define x 10) (define (f) x) (define (g) (define x 20) (f)) (g))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(10.0));
+}
+
+#[test]
+fn eval_e2_5_filter_with_lambda() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // E2.5 Test Matrix: Filter
+    // (begin (define (filter p lst) (if (null? lst) '() (if (p (car lst)) (cons (car lst) (filter p (cdr lst))) (filter p (cdr lst))))) (filter (lambda (x) (> x 2)) '(1 2 3 4 5))) → '(3 4 5)
+    let env = default_env();
+    let expr = parse("(begin (define (filter p lst) (if (null? lst) (quote ()) (if (p (car lst)) (cons (car lst) (filter p (cdr lst))) (filter p (cdr lst))))) (filter (lambda (x) (> x 2)) (quote (1 2 3 4 5))))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    // Expected: (3 4 5)
+    let expected = Value::List(vec![
+        Value::Number(3.0),
+        Value::Number(4.0),
+        Value::Number(5.0),
+    ]);
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn eval_e2_5_accumulator_mutable_closure() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // E2.5 Test Matrix: Accumulator (mutable closure)
+    // (begin (define (make-acc init) (define n init) (lambda (x) (set! n (+ n x)) n))
+    //        (define a (make-acc 0)) (a 5) (a 3) (a 2)) → 10
+    // Intermediate results: (a 5) → 5, (a 3) → 8, (a 2) → 10
+    let env = default_env();
+    let expr = parse("(begin (define (make-acc init) (define n init) (lambda (x) (set! n (+ n x)) n)) (define a (make-acc 0)) (a 5) (a 3) (a 2))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(10.0));
+}
+
+#[test]
+fn eval_e2_5_accumulator_intermediate_values() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // Verify all intermediate accumulator values: 5, 8, 10
+    let env = default_env();
+    // Define make-acc and create accumulator
+    let setup = parse("(begin (define (make-acc init) (define n init) (lambda (x) (set! n (+ n x)) n)) (define a (make-acc 0)))").unwrap();
+    straw_eval(&setup, &env).unwrap();
+
+    // (a 5) → 5
+    let expr1 = parse("(a 5)").unwrap();
+    let result1 = straw_eval(&expr1, &env).unwrap();
+    assert_eq!(result1, Value::Number(5.0));
+
+    // (a 3) → 8
+    let expr2 = parse("(a 3)").unwrap();
+    let result2 = straw_eval(&expr2, &env).unwrap();
+    assert_eq!(result2, Value::Number(8.0));
+
+    // (a 2) → 10
+    let expr3 = parse("(a 2)").unwrap();
+    let result3 = straw_eval(&expr3, &env).unwrap();
+    assert_eq!(result3, Value::Number(10.0));
+}
