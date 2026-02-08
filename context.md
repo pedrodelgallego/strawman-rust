@@ -6,7 +6,7 @@ Read by Claude at the start of the next task. Keep under 100 lines.
 ## Current State
 
 - `src/main.rs` — Entry point (binary). Parses CLI args: no args → `run_repl(stdin, stdout)`, file arg → `run_file(path, stdout)`.
-- `src/lib.rs` — Library root. Declares `pub mod builtins;`, `pub mod env;`, `pub mod eval;`, `pub mod lexer;`, `pub mod parser;`, `pub mod repl;`.
+- `src/lib.rs` — Library root. Declares `pub mod builtins;`, `pub mod env;`, `pub mod eval;`, `pub mod fast_eval;`, `pub mod lexer;`, `pub mod parser;`, `pub mod pretreat;`, `pub mod repl;`.
 - `src/lexer.rs` — Lexer module. Exports `Token` enum and `tokenize` function.
 - `src/parser.rs` — Parser module. Exports `Expr` enum, `parse`, and `parse_all`.
 - `src/env.rs` — Environment module. Exports `Value` enum and `Env` struct.
@@ -15,57 +15,56 @@ Read by Claude at the start of the next task. Keep under 100 lines.
     `Vector(Rc<RefCell<Vec<Value>>>)`,
     `Builtin(String, fn(Vec<Value>) -> Result<Value, String>)`,
     `Closure(Vec<String>, Vec<Expr>, Rc<Env>)`,
+    `FastClosure(Vec<String>, Vec<TreatedExpr>, Rc<Env>)`,
     `Continuation(Rc<dyn Fn(Value) -> Result<Value, String>>)`, `Void`.
   - `Env` struct with `bindings: RefCell<HashMap<String, Value>>`, `parent: Option<Rc<Env>>`.
   - Methods: `new`, `with_parent`, `set`, `update`, `extend`, `lookup`.
 - `src/eval.rs` — CPS evaluator module. Exports `straw_eval` and `straw_eval_k`.
-  - Special forms: `quote`, `begin`, `define`, `set!`, `lambda`, `and`, `or`,
-    `let`, `let*`, `letrec`, `if`, `catch`, `throw`, `block`, `return-from`,
-    `unwind-protect`, `call/cc`, `set-car!`, `set-cdr!`.
-- `src/builtins.rs` — Builtins module. Exports `default_env`.
-  - Includes `eq?`, `equal?`, `make-vector`, `vector-ref`, `vector-set!`, `vector-length`, `vector?`.
-- `src/repl.rs` — REPL module. Exports `run_repl`, `run_file`, and private `format_value`.
-- `docs/semantics.md` — Formal denotational semantics for all core forms and builtins.
-- `tests/test_semantics.rs` — 104 tests validating semantics document against interpreter.
+- `src/pretreat.rs` — Pretreatment module. Exports `TreatedExpr` enum and `pretreat` function.
+  - `TreatedExpr` variants: `Number`, `StringLit`, `Boolean`, `VarRef`, `Quote`, `If`, `Begin`,
+    `Define`, `DefineFunc`, `SetBang`, `Lambda`, `And`, `Or`, `Let`, `LetStar`, `Letrec`,
+    `Catch`, `Throw`, `Block`, `ReturnFrom`, `UnwindProtect`, `CallCC`, `SetCar`, `SetCdr`,
+    `Application`.
+  - `pretreat(expr: &Expr) -> TreatedExpr` — converts `Expr` to `TreatedExpr`, recognizing
+    all special forms at pretreat time (no string matching needed at eval time).
+- `src/fast_eval.rs` — Fast CPS evaluator. Exports `fast_eval` function.
+  - `fast_eval(expr: &TreatedExpr, env: &Rc<Env>) -> Result<Value, String>`
+  - Mirrors `straw_eval` but operates on `TreatedExpr` — dispatches by enum variant, not string.
+  - Uses CPS arg evaluation (`eval_args_cps`) for proper continuation threading.
+  - Creates `FastClosure` values instead of `Closure` for lambda/define.
+  - Handles both `FastClosure` and `Closure` in apply/call/cc (for builtins interop).
+- `src/builtins.rs` — Builtins module. `procedure?` recognizes `FastClosure` too.
+- `src/repl.rs` — REPL module. `format_value` handles `FastClosure` as `#<closure>`.
+- `tests/test_fast_eval.rs` — 42 tests validating `pretreat` + `fast_eval` produces identical results to `straw_eval`.
 - `tests/test_eval.rs` — 136 passing. `tests/test_repl.rs` — 14 passing.
 - `tests/test_lexer.rs` — 17 passing. `tests/test_parser.rs` — 14 passing.
 - `tests/test_env.rs` — 9 passing. `tests/test_builtins.rs` — 66 passing.
+- `tests/test_semantics.rs` — 104 passing.
 - `Cargo.toml` — Crate name is `strawman`, edition 2024. Dev-dependency: `gag = "1.0"`.
 
 ## Conventions & Decisions
 
 - Integration tests: `tests/test_{module}.rs`. Builtins tests use `default_env()`.
 - Eval tests use inline `make_test_env()` helper with `+`, `-`, `*` builtins.
-- Semantics tests: `tests/test_semantics.rs`, annotated with `sem_{section}_{name}`.
-  Each test references a section of `docs/semantics.md` (e.g., sem_4_1 = Section 4.1).
-  Traceability summary at bottom of file maps sections to test counts.
+- Fast eval tests use `eval_both(input, env)` helper that runs both `straw_eval` and `fast_eval`, asserting identical Debug output.
 - TDD discipline: write failing test first, then minimal impl.
-- `Value::List(Rc<Vec<Value>>)` — lists use `Rc` for identity semantics (`eq?` uses `Rc::ptr_eq`).
-- `Value::Vector(Rc<RefCell<Vec<Value>>>)` — vectors use `Rc<RefCell<>>` for mutable in-place access.
-- `Value::Builtin(name, fn_ptr)` uses `fn(Vec<Value>) -> Result<Value, String>`.
-- `Value::Continuation(Rc<dyn Fn(Value) -> Result<Value, String>>)` — reified first-class continuation.
-- `PartialEq` for `Value` compares structurally (used by `equal?`). `eq?` uses `Rc::ptr_eq` for lists.
-- Error messages: `"unbound variable: <name>"`, `"not a procedure: <debug>"`,
-  `"cannot set! unbound variable: <name>"`, `"expected number"`, `"division by zero"`,
-  `"expected procedure"`, `"no matching catch for tag: <tag>"`,
-  `"unknown block: <name>"`, `"expected mutable pair"`, `"index out of range"`,
-  `"expected vector"`.
-- Continuation escape: thread-local `ESCAPED_VALUE` + sentinel `CONT_ESCAPE` error string.
-- Throw escape: thread-locals `THROWN_TAG` + `THROWN_VALUE` + sentinel `THROW_ESCAPE` error string.
-- Block escape: thread-locals `BLOCK_NAME` + `BLOCK_VALUE` + sentinel `BLOCK_ESCAPE` error string.
-- REPL uses generic `BufRead`/`Write` for testability.
-- REPL prompt: `"strawman> "`. Value formatting: integers as `i64`, floats as `f64`, bools as `#t`/`#f`.
-- Vectors display as `#(elem1 elem2 ...)`.
-- Only `Value::Boolean(false)` is falsy; everything else is truthy.
-- Stdout capture tests (gag) MUST run with `--test-threads=1`.
-- Constructing lists: always `Value::List(Rc::new(vec![...]))`. In tests, import `std::rc::Rc`.
+- `Value::FastClosure(Vec<String>, Vec<TreatedExpr>, Rc<Env>)` — closures created by `fast_eval`.
+  Debug format: `Closure({params:?})` (same as regular Closure for comparison).
+- `fast_eval` handles both `Closure` and `FastClosure` in `apply_function` and `call/cc`.
+  Regular `Closure` bodies are pretreated on-the-fly when encountered.
+- Error messages identical between `straw_eval` and `fast_eval`.
+- All existing conventions from prior epics remain (see Conventions above for Value types, error formats, etc.).
 
 ## Gotchas & Notes for Next Task
 
-- **E5.1 & E5.2 COMPLETE**: `docs/semantics.md` covers all core forms + builtins.
-  `tests/test_semantics.rs` has 104 tests with traceability to all valuation clauses
-  (Sections 2–7 of semantics.md). Traceability summary at bottom of test file.
-- **Epics 1-5 COMPLETE**.
-- All 360 tests pass across all modules (136 eval + 66 builtins + 104 semantics + 17 lexer + 14 parser + 14 repl + 9 env).
-- **Next up: Epic 6** (Fast Interpretation) — pretreatment, lexical addressing, benchmarks.
-- display/newline tests produce stdout output; use `--test-threads=1` to avoid interleaving.
+- **E6.1 COMPLETE**: `pretreat` + `fast_eval` produce identical results to `straw_eval` on all 42 tests.
+- **All 402 tests pass** (360 existing + 42 new fast_eval tests).
+- **Next up: E6.2** — Lexical addressing: replace `VarRef(String)` with `LexicalRef(depth, offset)`.
+  Need to add a static environment to `pretreat` that tracks variable positions.
+  Runtime environment should use vector-of-vectors (ribs) instead of hash maps.
+- **E6.3** after that: benchmark harness comparing `straw_eval` vs `fast_eval`.
+- The `Application` handler in `fast_eval` uses proper CPS arg evaluation (not eager) to ensure
+  `call/cc` captures the correct continuation context. This is critical.
+- `TreatedExpr::Quote` stores the original `Expr` (not `TreatedExpr`) since quoted data
+  is not evaluated and needs `expr_to_value` conversion.
+- `SetCar`/`SetCdr` store an optional `var_name: Option<String>` for env update.

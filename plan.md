@@ -41,17 +41,17 @@ Every task within every phase follows this loop:
 7. **GREEN** — Define `token` struct, add number lexing
 8. **GREEN** — Run tests → both pass
 9. Continue for each row in E1.1 Test Matrix:
-   - [ ] Empty input
-   - [ ] Single number / negative / float
-   - [ ] String literal / string with escape
-   - [ ] Symbol / operator symbol
-   - [ ] Boolean `#t` / `#f`
-   - [ ] Parentheses
-   - [ ] Mixed expression `(+ 1 2)`
-   - [ ] Comment skipping
-   - [ ] Whitespace only
-   - [ ] Unterminated string → error
-   - [ ] Nested parens
+   - [x] Empty input
+   - [x] Single number / negative / float
+   - [x] String literal / string with escape
+   - [x] Symbol / operator symbol
+   - [x] Boolean `#t` / `#f`
+   - [x] Parentheses
+   - [x] Mixed expression `(+ 1 2)`
+   - [x] Comment skipping
+   - [x] Whitespace only
+   - [x] Unterminated string → error
+   - [x] Nested parens
 10. **REFACTOR** — Clean up lexer code, ensure no duplication
 11. **COMMIT** — All E1.1 tests green
 
@@ -66,20 +66,20 @@ For each row in E1.2 Test Matrix:
 4. **GREEN** — Run full suite → all pass
 
 Rows to cover (one RED→GREEN cycle each):
-- [ ] Single atom: number
-- [ ] Single atom: symbol
-- [ ] Single atom: string
-- [ ] Single atom: boolean
-- [ ] Simple list `(+ 1 2)`
-- [ ] Nested list `(+ (* 2 3) 4)`
-- [ ] Empty list `()`
-- [ ] Deeply nested `(a (b (c d)))`
-- [ ] Quote sugar `'x` → `(quote x)`
-- [ ] Quote list `'(1 2 3)`
-- [ ] Multiple expressions via `read-all-from-string`
-- [ ] Error: unmatched open paren
-- [ ] Error: unmatched close paren
-- [ ] Error: empty input
+- [x] Single atom: number
+- [x] Single atom: symbol
+- [x] Single atom: string
+- [x] Single atom: boolean
+- [x] Simple list `(+ 1 2)`
+- [x] Nested list `(+ (* 2 3) 4)`
+- [x] Empty list `()`
+- [x] Deeply nested `(a (b (c d)))`
+- [x] Quote sugar `'x` → `(quote x)`
+- [x] Quote list `'(1 2 3)`
+- [x] Multiple expressions via `read-all-from-string`
+- [x] Error: unmatched open paren
+- [x] Error: unmatched close paren
+- [x] Error: empty input
 - **REFACTOR** then **COMMIT**
 
 ## Phase 3 — Environment
@@ -87,15 +87,15 @@ Rows to cover (one RED→GREEN cycle each):
 
 ### TDD Steps
 For each row in E1.3 Test Matrix:
-- [ ] Set and lookup
-- [ ] Unbound lookup → error
-- [ ] Parent chain lookup
-- [ ] Shadowing
-- [ ] Update existing binding
-- [ ] Update unbound → error
-- [ ] Extend with params/args
-- [ ] Extend arity mismatch → error
-- [ ] Parent not mutated by child
+- [x] Set and lookup
+- [x] Unbound lookup → error
+- [x] Parent chain lookup
+- [x] Shadowing
+- [x] Update existing binding
+- [x] Update unbound → error
+- [x] Extend with params/args
+- [x] Extend arity mismatch → error
+- [x] Parent not mutated by child
 - **REFACTOR** then **COMMIT**
 
 ## Phase 4 — Core Evaluator
@@ -105,65 +105,65 @@ For each row in E1.3 Test Matrix:
 Work through stories in order. For each story, work through its Test Matrix row by row:
 
 **E1.4 — Self-evaluating & symbol lookup:**
-- [ ] Integer → itself
-- [ ] Float → itself
-- [ ] Negative → itself
-- [ ] String → itself
-- [ ] Boolean true/false → itself
-- [ ] Bound symbol → value
-- [ ] Unbound symbol → error
+- [x] Integer → itself
+- [x] Float → itself
+- [x] Negative → itself
+- [x] String → itself
+- [x] Boolean true/false → itself
+- [x] Bound symbol → value
+- [x] Unbound symbol → error
 
 **E1.5 — Quote:**
-- [ ] `(quote foo)` → symbol
-- [ ] `(quote 42)` → number
-- [ ] `(quote (1 2 3))` → list
-- [ ] `(quote (a (b c)))` → nested
-- [ ] `(quote ())` → empty list
-- [ ] `(quote)` → arity error
-- [ ] `(quote a b)` → arity error
+- [x] `(quote foo)` → symbol
+- [x] `(quote 42)` → number
+- [x] `(quote (1 2 3))` → list
+- [x] `(quote (a (b c)))` → nested
+- [x] `(quote ())` → empty list
+- [x] `(quote)` → arity error
+- [x] `(quote a b)` → arity error
 
 **E1.6 — If:**
-- [ ] True branch
-- [ ] False branch
-- [ ] Truthy zero
-- [ ] Truthy empty list
-- [ ] No alternative (true)
-- [ ] No alternative (false) → void
-- [ ] Non-taken branch not evaluated
-- [ ] No args → error
+- [x] True branch
+- [x] False branch
+- [x] Truthy zero
+- [x] Truthy empty list
+- [x] No alternative (true)
+- [x] No alternative (false) → void
+- [x] Non-taken branch not evaluated
+- [x] No args → error
 
 **E1.7 — Begin:**
-- [ ] Single expr
-- [ ] Two/three exprs → last
-- [ ] Empty begin → void
-- [ ] Side effect ordering
-- [ ] Nested begin
+- [x] Single expr
+- [x] Two/three exprs → last
+- [x] Empty begin → void
+- [x] Side effect ordering
+- [x] Nested begin
 
 **E1.8 — Define & Set!:**
-- [ ] Simple define
-- [ ] Define overwrites
-- [ ] Define with expression
-- [ ] Set! existing
-- [ ] Set! parent binding
-- [ ] Set! unbound → error
-- [ ] Define returns void
+- [x] Simple define
+- [x] Define overwrites
+- [x] Define with expression
+- [x] Set! existing
+- [x] Set! parent binding
+- [x] Set! unbound → error
+- [x] Define returns void
 
 **E1.9 — Lambda & closures:**
-- [ ] Identity function
-- [ ] Multi param
-- [ ] Closure captures env
-- [ ] Closure over closure (make-adder)
-- [ ] Implicit begin in body
-- [ ] No params
-- [ ] Wrong arity → error
-- [ ] Bad param list → error
+- [x] Identity function
+- [x] Multi param
+- [x] Closure captures env
+- [x] Closure over closure (make-adder)
+- [x] Implicit begin in body
+- [x] No params
+- [x] Wrong arity → error
+- [x] Bad param list → error
 
 **E1.10 — Function application:**
-- [ ] Builtin call
-- [ ] Closure call
-- [ ] Nested calls
-- [ ] Higher-order function
-- [ ] Non-procedure in operator → error
+- [x] Builtin call
+- [x] Closure call
+- [x] Nested calls
+- [x] Higher-order function
+- [x] Non-procedure in operator → error
 
 **REFACTOR** then **COMMIT** after each story.
 
@@ -174,45 +174,45 @@ Work through stories in order. For each story, work through its Test Matrix row 
 For each story, row-by-row through Test Matrix:
 
 **E1.11 — Arithmetic:**
-- [ ] `(+)` → 0
-- [ ] `(+ 5)` → 5
-- [ ] `(+ 1 2 3 4)` → 10
-- [ ] `(+ 1.5 2.5)` → 4.0
-- [ ] `(- 5)` → -5
-- [ ] `(- 10 3)` → 7
-- [ ] `(- 10 3 2)` → 5
-- [ ] `(*)` → 1
-- [ ] `(* 3 4)` → 12
-- [ ] `(/ 10 2)` → 5
-- [ ] `(/ 7 2)` → 3.5
-- [ ] `(/ 1 0)` → error
-- [ ] `(mod 10 3)` → 1
-- [ ] `(mod 10 0)` → error
-- [ ] `(+ 1 "a")` → error
+- [x] `(+)` → 0
+- [x] `(+ 5)` → 5
+- [x] `(+ 1 2 3 4)` → 10
+- [x] `(+ 1.5 2.5)` → 4.0
+- [x] `(- 5)` → -5
+- [x] `(- 10 3)` → 7
+- [x] `(- 10 3 2)` → 5
+- [x] `(*)` → 1
+- [x] `(* 3 4)` → 12
+- [x] `(/ 10 2)` → 5
+- [x] `(/ 7 2)` → 3.5
+- [x] `(/ 1 0)` → error
+- [x] `(mod 10 3)` → 1
+- [x] `(mod 10 0)` → error
+- [x] `(+ 1 "a")` → error
 
 **E1.12 — Comparison & equality:**
-- [ ] `<`, `>`, `<=`, `>=` — true/false cases
-- [ ] `=` — numeric equality
-- [ ] `equal?` — atoms, strings, lists, nested, different
-- [ ] Non-number arg → error
+- [x] `<`, `>`, `<=`, `>=` — true/false cases
+- [x] `=` — numeric equality
+- [x] `equal?` — atoms, strings, lists, nested, different
+- [x] Non-number arg → error
 
 **E1.13 — List operations:**
-- [ ] `cons` onto list / dotted
-- [ ] `car` / `cdr`
-- [ ] `list` empty / many
-- [ ] `null?` / `pair?` — various types
-- [ ] `car` of empty → error
-- [ ] `cdr` of atom → error
+- [x] `cons` onto list / dotted
+- [x] `car` / `cdr`
+- [x] `list` empty / many
+- [x] `null?` / `pair?` — various types
+- [x] `car` of empty → error
+- [x] `cdr` of atom → error
 
 **E1.14 — and/or/not:**
-- [ ] `and` — all true, short-circuit, empty, one false
-- [ ] `or` — first true, all false, short-circuit, empty
-- [ ] `not` — true, false, truthy
+- [x] `and` — all true, short-circuit, empty, one false
+- [x] `or` — first true, all false, short-circuit, empty
+- [x] `not` — true, false, truthy
 
 **E1.15 — Type predicates & I/O:**
-- [ ] Each predicate: positive and negative case
-- [ ] `display` string / number
-- [ ] `newline`
+- [x] Each predicate: positive and negative case
+- [x] `display` string / number
+- [x] `newline`
 
 **REFACTOR** then **COMMIT** after each story.
 
@@ -220,16 +220,16 @@ For each story, row-by-row through Test Matrix:
 *Stories: E1.16*
 
 ### TDD Steps
-- [ ] Simple expression → prints result
-- [ ] Computation → prints result
-- [ ] Define then use across inputs
-- [ ] Multi-line input (balanced parens)
-- [ ] Error recovery (error then normal expr)
-- [ ] Unbound variable error
-- [ ] `(exit)` terminates
-- [ ] `(quit)` terminates
-- [ ] EOF terminates
-- [ ] Wire `strawman.rkt`: no args → REPL, file arg → execute
+- [x] Simple expression → prints result
+- [x] Computation → prints result
+- [x] Define then use across inputs
+- [x] Multi-line input (balanced parens)
+- [x] Error recovery (error then normal expr)
+- [x] Unbound variable error
+- [x] `(exit)` terminates
+- [x] `(quit)` terminates
+- [x] EOF terminates
+- [x] Wire `strawman.rkt`: no args → REPL, file arg → execute
 - **REFACTOR** then **COMMIT**
 
 ## Phase 7 — Namespaces & Recursion
@@ -238,29 +238,29 @@ For each story, row-by-row through Test Matrix:
 ### TDD Steps
 
 **E2.1 — let:**
-- [ ] Simple / two bindings / parallel semantics
-- [ ] Shadowing / outer unchanged
-- [ ] Body implicit begin / nested let / empty bindings
-- [ ] Malformed → error
+- [x] Simple / two bindings / parallel semantics
+- [x] Shadowing / outer unchanged
+- [x] Body implicit begin / nested let / empty bindings
+- [x] Malformed → error
 
 **E2.2 — let*:**
-- [ ] Sequential deps / three deps / shadow across / empty
+- [x] Sequential deps / three deps / shadow across / empty
 
 **E2.3 — letrec:**
-- [ ] Self-recursive (factorial)
-- [ ] Mutual recursion (even?/odd?)
-- [ ] Non-lambda value
+- [x] Self-recursive (factorial)
+- [x] Mutual recursion (even?/odd?)
+- [x] Non-lambda value
 
 **E2.4 — Define shorthand:**
-- [ ] `(define (f x) body)` — simple, multi-param, with body, recursive, no params
+- [x] `(define (f x) body)` — simple, multi-param, with body, recursive, no params
 
 **E2.5 — Integration:**
-- [ ] Factorial 0 / factorial 10
-- [ ] Fibonacci 10
-- [ ] Map with lambda
-- [ ] Filter with lambda
-- [ ] Closure scope (lexical vs dynamic)
-- [ ] Accumulator (mutable closure)
+- [x] Factorial 0 / factorial 10
+- [x] Fibonacci 10
+- [x] Map with lambda
+- [x] Filter with lambda
+- [x] Closure scope (lexical vs dynamic)
+- [x] Accumulator (mutable closure)
 
 **REFACTOR** then **COMMIT** after each story.
 
@@ -275,33 +275,33 @@ Same TDD cycle applies: RED → RED → GREEN → GREEN → FIX → REFACTOR →
 *Stories: E3.1 through E3.5*
 
 ### TDD Steps
-- [ ] **E3.1** — Run all existing tests against CPS evaluator → must pass unchanged
-- [ ] **E3.2** — `call/cc`: normal return, early exit, in expression, saved continuation, non-procedure error
-- [ ] **E3.3** — `catch`/`throw`: no throw, simple throw, nested, wrong tag, throw in function
-- [ ] **E3.4** — `block`/`return-from`: no return, early return, nested, inner, unknown block
-- [ ] **E3.5** — `unwind-protect`: normal, with throw, cleanup order
+- [x] **E3.1** — Run all existing tests against CPS evaluator → must pass unchanged
+- [x] **E3.2** — `call/cc`: normal return, early exit, in expression, saved continuation, non-procedure error
+- [x] **E3.3** — `catch`/`throw`: no throw, simple throw, nested, wrong tag, throw in function
+- [x] **E3.4** — `block`/`return-from`: no return, early return, nested, inner, unknown block
+- [x] **E3.5** — `unwind-protect`: normal, with throw, cleanup order
 
 ## Phase 9 — Side Effects & Mutation
 *Stories: E4.1 through E4.4*
 
 ### TDD Steps
-- [ ] **E4.1** — Shared mutation between closures, lambda captures box
-- [ ] **E4.2** — `set-car!`, `set-cdr!`, non-pair error
-- [ ] **E4.3** — `eq?` vs `equal?`: same symbol, same number, different lists, same binding, structural equality
-- [ ] **E4.4** — Vectors: make/ref, set/ref, length, type pred, out of bounds
+- [x] **E4.1** — Shared mutation between closures, lambda captures box
+- [x] **E4.2** — `set-car!`, `set-cdr!`, non-pair error
+- [x] **E4.3** — `eq?` vs `equal?`: same symbol, same number, different lists, same binding, structural equality
+- [x] **E4.4** — Vectors: make/ref, set/ref, length, type pred, out of bounds
 
 ## Phase 10 — Denotational Semantics
 *Stories: E5.1, E5.2*
 
 ### TDD Steps
-- [ ] **E5.1** — Write `docs/semantics.md`
-- [ ] **E5.2** — Derive one test per valuation clause, run full suite
+- [x] **E5.1** — Write `docs/semantics.md`
+- [x] **E5.2** — Derive one test per valuation clause, run full suite
 
 ## Phase 11 — Fast Interpretation
 *Stories: E6.1 through E6.3*
 
 ### TDD Steps
-- [ ] **E6.1** — Run all existing tests through pretreat + fast-eval → identical results
+- [x] **E6.1** — Run all existing tests through pretreat + fast-eval → identical results
 - [ ] **E6.2** — Lexical addressing: local var, free var one level, multiple params
 - [ ] **E6.3** — Benchmark harness: factorial, fibonacci, ackermann, map
 
