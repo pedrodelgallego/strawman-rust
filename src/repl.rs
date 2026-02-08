@@ -35,7 +35,7 @@ fn format_value(val: &Value) -> String {
             format!("#({})", inner.join(" "))
         }
         Value::Builtin(name, _) => format!("#<procedure:{}>", name),
-        Value::Closure(_, _, _) => "#<closure>".to_string(),
+        Value::Closure(_, _, _) | Value::FastClosure(_, _, _) => "#<closure>".to_string(),
         Value::Continuation(_) => "#<continuation>".to_string(),
         Value::Void => String::new(),
     }

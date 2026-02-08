@@ -274,7 +274,7 @@ pub fn default_env() -> Rc<Env> {
         if args.len() != 1 {
             return Err(format!("arity mismatch: expected 1, got {}", args.len()));
         }
-        Ok(Value::Boolean(matches!(&args[0], Value::Builtin(_, _) | Value::Closure(_, _, _))))
+        Ok(Value::Boolean(matches!(&args[0], Value::Builtin(_, _) | Value::Closure(_, _, _) | Value::FastClosure(_, _, _))))
     }));
 
     env.set("display", Value::Builtin("display".to_string(), |args| {
