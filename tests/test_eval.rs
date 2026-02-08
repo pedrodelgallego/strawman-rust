@@ -1,3 +1,5 @@
+extern crate gag;
+
 use std::rc::Rc;
 use strawman::env::{Env, Value};
 use strawman::eval::straw_eval;
@@ -1255,4 +1257,326 @@ fn eval_e2_5_accumulator_intermediate_values() {
     let expr3 = parse("(a 2)").unwrap();
     let result3 = straw_eval(&expr3, &env).unwrap();
     assert_eq!(result3, Value::Number(10.0));
+}
+
+// ── E3.2 — call/cc ──
+
+#[test]
+fn eval_e3_2_callcc_normal_return() {
+    use strawman::parser::parse;
+    // (call/cc (lambda (k) 42)) → 42
+    let env = make_test_env();
+    let expr = parse("(call/cc (lambda (k) 42))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(42.0));
+}
+
+#[test]
+fn eval_e3_2_callcc_early_exit() {
+    use strawman::parser::parse;
+    // (call/cc (lambda (k) (k 10) 20)) → 10
+    let env = make_test_env();
+    let expr = parse("(call/cc (lambda (k) (k 10) 20))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(10.0));
+}
+
+#[test]
+fn eval_e3_2_callcc_in_expression() {
+    use strawman::parser::parse;
+    // (+ 1 (call/cc (lambda (k) (k 5)))) → 6
+    let env = make_test_env();
+    let expr = parse("(+ 1 (call/cc (lambda (k) (k 5))))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(6.0));
+}
+
+#[test]
+fn eval_e3_2_callcc_saved_continuation() {
+    use strawman::parser::parse;
+    // (begin (define saved #f) (+ 1 (call/cc (lambda (k) (set! saved k) 10)))) → 11
+    // Then (saved 20) → 21
+    let env = make_test_env();
+    let expr1 = parse("(begin (define saved #f) (+ 1 (call/cc (lambda (k) (set! saved k) 10))))").unwrap();
+    let result1 = straw_eval(&expr1, &env).unwrap();
+    assert_eq!(result1, Value::Number(11.0));
+
+    let expr2 = parse("(saved 20)").unwrap();
+    let result2 = straw_eval(&expr2, &env).unwrap();
+    assert_eq!(result2, Value::Number(21.0));
+}
+
+#[test]
+fn eval_e3_2_callcc_non_procedure_error() {
+    use strawman::parser::parse;
+    // (call/cc 42) → Error: expected procedure
+    let env = make_test_env();
+    let expr = parse("(call/cc 42)").unwrap();
+    let result = straw_eval(&expr, &env);
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(
+        err.contains("expected procedure"),
+        "expected 'expected procedure' error, got: {err}"
+    );
+}
+
+#[test]
+fn eval_e3_2_callcc_acceptance_abandon_computation() {
+    use strawman::parser::parse;
+    // Acceptance Criterion 1:
+    // (+ 1 (call/cc (lambda (k) (+ 2 (k 3))))) → 4
+    // The (+ 2 ...) is abandoned when k is invoked
+    let env = make_test_env();
+    let expr = parse("(+ 1 (call/cc (lambda (k) (+ 2 (k 3)))))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(4.0));
+}
+
+#[test]
+fn eval_e3_2_callcc_acceptance_saved_resume() {
+    use strawman::parser::parse;
+    // Acceptance Criterion 2:
+    // A saved continuation called later resumes the computation as if call/cc returned that value
+    let env = make_test_env();
+    let setup = parse("(begin (define saved #f) (+ 1 (call/cc (lambda (k) (set! saved k) 10))))").unwrap();
+    let result1 = straw_eval(&setup, &env).unwrap();
+    assert_eq!(result1, Value::Number(11.0));
+
+    // (saved 100) → 101
+    let expr = parse("(saved 100)").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(101.0));
+}
+
+// ── E3.1 — CPS evaluator: identity continuation ──
+
+#[test]
+fn eval_e3_1_identity_continuation() {
+    use strawman::parser::parse;
+    use strawman::eval::straw_eval_k;
+    // E3.1 Test Matrix: Identity continuation
+    // (+ 1 2) with identity k → 3
+    let env = make_test_env();
+    let expr = parse("(+ 1 2)").unwrap();
+    let result = straw_eval_k(&expr, &env, &|v| Ok(v)).unwrap();
+    assert_eq!(result, Value::Number(3.0));
+}
+
+// ── E3.3 — catch/throw ──
+
+#[test]
+fn eval_e3_3_catch_no_throw() {
+    use strawman::parser::parse;
+    // (catch 'x 42) → 42
+    let env = make_test_env();
+    let expr = parse("(catch (quote x) 42)").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(42.0));
+}
+
+#[test]
+fn eval_e3_3_catch_simple_throw() {
+    use strawman::parser::parse;
+    // (catch 'x (begin (throw 'x 10) 20)) → 10
+    let env = make_test_env();
+    let expr = parse("(catch (quote x) (begin (throw (quote x) 10) 20))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(10.0));
+}
+
+#[test]
+fn eval_e3_3_catch_nested() {
+    use strawman::parser::parse;
+    // (catch 'a (catch 'b (throw 'a 1))) → 1
+    let env = make_test_env();
+    let expr = parse("(catch (quote a) (catch (quote b) (throw (quote a) 1)))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(1.0));
+}
+
+#[test]
+fn eval_e3_3_catch_wrong_tag() {
+    use strawman::parser::parse;
+    // (catch 'a (throw 'b 1)) → Error: no matching catch
+    let env = make_test_env();
+    let expr = parse("(catch (quote a) (throw (quote b) 1))").unwrap();
+    let result = straw_eval(&expr, &env);
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(
+        err.contains("no matching catch"),
+        "expected 'no matching catch' error, got: {err}"
+    );
+}
+
+#[test]
+fn eval_e3_3_catch_throw_in_function() {
+    use strawman::parser::parse;
+    // (catch 'x ((lambda () (throw 'x 99)))) → 99
+    let env = make_test_env();
+    let expr = parse("(catch (quote x) ((lambda () (throw (quote x) 99))))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(99.0));
+}
+
+#[test]
+fn eval_e3_3_catch_acceptance_criterion() {
+    use strawman::parser::parse;
+    // Acceptance Criterion:
+    // (catch 'err (begin (throw 'err "oops") "unreachable")) → "oops"
+    let env = make_test_env();
+    let expr = parse("(catch (quote err) (begin (throw (quote err) \"oops\") \"unreachable\"))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::StringLit("oops".to_string()));
+}
+
+// ── E3.4 — block / return-from ──
+
+#[test]
+fn eval_e3_4_block_no_return() {
+    use strawman::parser::parse;
+    // (block b 42) → 42
+    let env = make_test_env();
+    let expr = parse("(block b 42)").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(42.0));
+}
+
+#[test]
+fn eval_e3_4_block_early_return() {
+    use strawman::parser::parse;
+    // (block b (return-from b 10) 20) → 10
+    let env = make_test_env();
+    let expr = parse("(block b (return-from b 10) 20)").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(10.0));
+}
+
+#[test]
+fn eval_e3_4_block_nested_return_outer() {
+    use strawman::parser::parse;
+    // (block a (block b (return-from a 1))) → 1
+    let env = make_test_env();
+    let expr = parse("(block a (block b (return-from a 1)))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(1.0));
+}
+
+#[test]
+fn eval_e3_4_block_return_from_inner() {
+    use strawman::parser::parse;
+    // (block a (block b (return-from b 2)) 3) → 3
+    // return-from b exits block b with 2, then block a continues to evaluate 3
+    let env = make_test_env();
+    let expr = parse("(block a (block b (return-from b 2)) 3)").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(3.0));
+}
+
+#[test]
+fn eval_e3_4_return_from_unknown_block() {
+    use strawman::parser::parse;
+    // (return-from z 1) → Error
+    let env = make_test_env();
+    let expr = parse("(return-from z 1)").unwrap();
+    let result = straw_eval(&expr, &env);
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(
+        err.contains("unknown block"),
+        "expected 'unknown block' error, got: {err}"
+    );
+}
+
+#[test]
+fn eval_e3_4_block_acceptance_criterion() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    // Acceptance Criterion:
+    // (block done (return-from done 42) (error "unreachable")) → 42
+    let env = default_env();
+    let expr = parse("(block done (return-from done 42) (error \"unreachable\"))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(42.0));
+}
+
+// ── E3.5 — unwind-protect ──
+
+#[test]
+fn eval_e3_5_unwind_protect_normal() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    use std::io::Read;
+    // (unwind-protect 42 (display "clean")) → 42, stdout: "clean"
+    let env = default_env();
+    let expr = parse(r#"(unwind-protect 42 (display "clean"))"#).unwrap();
+
+    let mut buf = gag::BufferRedirect::stdout().unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    let mut output = String::new();
+    buf.read_to_string(&mut output).unwrap();
+    drop(buf);
+
+    assert_eq!(result, Value::Number(42.0));
+    assert_eq!(output, "clean");
+}
+
+#[test]
+fn eval_e3_5_unwind_protect_with_throw() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    use std::io::Read;
+    // (catch 'x (unwind-protect (throw 'x 1) (display "clean"))) → 1, stdout: "clean"
+    let env = default_env();
+    let expr = parse(r#"(catch (quote x) (unwind-protect (throw (quote x) 1) (display "clean")))"#).unwrap();
+
+    let mut buf = gag::BufferRedirect::stdout().unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    let mut output = String::new();
+    buf.read_to_string(&mut output).unwrap();
+    drop(buf);
+
+    assert_eq!(result, Value::Number(1.0));
+    assert_eq!(output, "clean");
+}
+
+#[test]
+fn eval_e3_5_unwind_protect_cleanup_order() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    use std::io::Read;
+    // (unwind-protect 10 (display "a") (display "b")) → 10, stdout: "ab"
+    let env = default_env();
+    let expr = parse(r#"(unwind-protect 10 (display "a") (display "b"))"#).unwrap();
+
+    let mut buf = gag::BufferRedirect::stdout().unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    let mut output = String::new();
+    buf.read_to_string(&mut output).unwrap();
+    drop(buf);
+
+    assert_eq!(result, Value::Number(10.0));
+    assert_eq!(output, "ab");
+}
+
+#[test]
+fn eval_e3_5_unwind_protect_acceptance() {
+    use strawman::parser::parse;
+    use strawman::builtins::default_env;
+    use std::io::Read;
+    // Acceptance Criterion:
+    // (catch 'e (unwind-protect (throw 'e "err") (display "cleaned")))
+    // → "err", stdout: "cleaned"
+    let env = default_env();
+    let expr = parse(r#"(catch (quote e) (unwind-protect (throw (quote e) "err") (display "cleaned")))"#).unwrap();
+
+    let mut buf = gag::BufferRedirect::stdout().unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    let mut output = String::new();
+    buf.read_to_string(&mut output).unwrap();
+    drop(buf);
+
+    assert_eq!(result, Value::StringLit("err".to_string()));
+    assert_eq!(output, "cleaned");
 }

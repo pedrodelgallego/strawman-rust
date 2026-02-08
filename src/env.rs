@@ -13,6 +13,7 @@ pub enum Value {
     Pair(Box<Value>, Box<Value>),
     Builtin(String, fn(Vec<Value>) -> Result<Value, String>),
     Closure(Vec<String>, Vec<crate::parser::Expr>, Rc<Env>),
+    Continuation(Rc<dyn Fn(Value) -> Result<Value, String>>),
     Void,
 }
 
@@ -27,6 +28,7 @@ impl PartialEq for Value {
             (Value::Pair(a1, a2), Value::Pair(b1, b2)) => a1 == b1 && a2 == b2,
             (Value::Builtin(a, _), Value::Builtin(b, _)) => a == b,
             (Value::Closure(_, _, _), Value::Closure(_, _, _)) => false,
+            (Value::Continuation(_), Value::Continuation(_)) => false,
             (Value::Void, Value::Void) => true,
             _ => false,
         }
@@ -44,6 +46,7 @@ impl std::fmt::Debug for Value {
             Value::Pair(a, b) => write!(f, "Pair({a:?}, {b:?})"),
             Value::Builtin(name, _) => write!(f, "Builtin({name:?})"),
             Value::Closure(params, _, _) => write!(f, "Closure({params:?})"),
+            Value::Continuation(_) => write!(f, "Continuation"),
             Value::Void => write!(f, "Void"),
         }
     }

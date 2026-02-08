@@ -987,7 +987,7 @@ main() {
 
         # Per-task log file
         local task_slug
-        task_slug=$(echo "$checkbox_text" | tr ' /()' '-' | tr -d "'\"\`" | head -c 60)
+        task_slug=$(echo "$checkbox_text" | LC_ALL=C tr -cs 'A-Za-z0-9._-' '-' | sed 's/^-//;s/-$//' | head -c 60)
         local attempt=$((consecutive_failures + 1))
         CURRENT_TASK_LOG="$LOGS_DIR/$(date '+%Y%m%d-%H%M%S')-${task_slug}-attempt${attempt}.log"
 

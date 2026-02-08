@@ -8,35 +8,32 @@ Read by Claude at the start of the next task. Keep under 100 lines.
 - `src/main.rs` — Entry point (binary). Parses CLI args: no args → `run_repl(stdin, stdout)`, file arg → `run_file(path, stdout)`.
 - `src/lib.rs` — Library root. Declares `pub mod builtins;`, `pub mod env;`, `pub mod eval;`, `pub mod lexer;`, `pub mod parser;`, `pub mod repl;`.
 - `src/lexer.rs` — Lexer module. Exports `Token` enum and `tokenize` function.
-  - `Token` enum: `Number(f64)`, `StringLit(String)`, `Boolean(bool)`, `Symbol(String)`,
-    `LParen`, `RParen`, `Quote`. Derives `Debug, PartialEq`.
-  - `pub fn tokenize(input: &str) -> Result<Vec<Token>, String>`.
 - `src/parser.rs` — Parser module. Exports `Expr` enum, `parse`, and `parse_all`.
-  - `Expr` enum: `Number(f64)`, `Symbol(String)`, `StringLit(String)`, `Boolean(bool)`,
-    `List(Vec<Expr>)`. Derives `Debug, PartialEq, Clone`.
-  - `pub fn parse(input: &str) -> Result<Expr, String>` — returns first expression.
-  - `pub fn parse_all(input: &str) -> Result<Vec<Expr>, String>` — returns all expressions.
 - `src/env.rs` — Environment module. Exports `Value` enum and `Env` struct.
   - `Value` enum: `Number(f64)`, `StringLit(String)`, `Boolean(bool)`, `Symbol(String)`,
     `List(Vec<Value>)`, `Pair(Box<Value>, Box<Value>)`,
     `Builtin(String, fn(Vec<Value>) -> Result<Value, String>)`,
-    `Closure(Vec<String>, Vec<Expr>, Rc<Env>)`, `Void`.
+    `Closure(Vec<String>, Vec<Expr>, Rc<Env>)`,
+    `Continuation(Rc<dyn Fn(Value) -> Result<Value, String>>)`, `Void`.
   - `Env` struct with `bindings: RefCell<HashMap<String, Value>>`, `parent: Option<Rc<Env>>`.
   - Methods: `new`, `with_parent`, `set`, `update`, `extend`, `lookup`.
-- `src/eval.rs` — Evaluator module. Exports `straw_eval`.
-  - `pub fn straw_eval(expr: &Expr, env: &Rc<Env>) -> Result<Value, String>`.
-  - Handles: self-eval, symbol lookup, quote, begin, define (plain + shorthand), set!, lambda, and, or, if, let, let*, letrec, function application.
+- `src/eval.rs` — CPS evaluator module. Exports `straw_eval` and `straw_eval_k`.
+  - Internal `eval_cps` uses `Cont = Rc<dyn Fn(Value) -> Result<Value, String>>` for proper continuation capture.
+  - `straw_eval_k` is public API wrapper: evaluates with identity Rc continuation, then applies caller's `&dyn Fn` k.
+  - `straw_eval` catches continuation escapes (CONT_ESCAPE), throw escapes (THROW_ESCAPE), and block escapes (BLOCK_ESCAPE) at top level.
+  - `call/cc` special form: reifies k as `Value::Continuation`, captures full computation via Rc clone.
+  - `catch` special form: `(catch tag-expr body-expr)` — evaluates tag to symbol, evaluates body; intercepts THROW_ESCAPE if tag matches.
+  - `throw` special form: `(throw tag-expr value-expr)` — evaluates both, stores tag+value in thread-locals, returns THROW_ESCAPE sentinel.
+  - `block` special form: `(block name body ...)` — evaluates body; intercepts BLOCK_ESCAPE if name matches.
+  - `return-from` special form: `(return-from name value-expr)` — evaluates value, stores name+value in thread-locals, returns BLOCK_ESCAPE sentinel.
+  - `unwind-protect` special form: `(unwind-protect protected cleanup ...)` — evaluates protected, always runs cleanup forms, re-propagates error if any.
+  - `eval_args_cps`: evaluates arguments left-to-right in CPS, threading k through for proper continuation capture.
+  - `apply_function`: handles `Builtin`, `Closure`, and `Continuation` application.
 - `src/builtins.rs` — Builtins module. Exports `default_env`.
-  - Registers: `+`, `-`, `*`, `/`, `mod`, `<`, `>`, `<=`, `>=`, `=`, `equal?`, `list`, `cons`, `car`, `cdr`, `null?`, `pair?`, `not`, `number?`, `string?`, `symbol?`, `boolean?`, `procedure?`, `display`, `newline`.
 - `src/repl.rs` — REPL module. Exports `run_repl`, `run_file`, and private `format_value`.
-  - `pub fn run_repl<R: BufRead, W: Write>(input: &mut R, output: &mut W)` — generic over I/O for testability.
-  - `pub fn run_file<W: Write>(path: &str, output: &mut W) -> Result<(), String>` — reads file, parse_all, eval each, print non-void results, returns Err on failure.
-  - `fn format_value(val: &Value) -> String` — formats values for REPL output.
-  - `fn paren_depth(s: &str) -> i32` — counts net open parens (handles strings, escapes, comments).
-  - `fn is_exit_command(expr: &Expr) -> bool` — checks if expr is `(exit)` or `(quit)`.
-- `tests/test_repl.rs` — 14 passing REPL tests (10 REPL + 4 run_file).
-- `tests/test_lexer.rs` — 17 passing. `tests/test_parser.rs` — 14 passing.
-- `tests/test_env.rs` — 9 passing. `tests/test_eval.rs` — 90 passing.
+- `tests/test_eval.rs` — 114 passing tests (91 from Epics 1-2/E3.1 + 7 call/cc + 6 catch/throw + 6 block/return-from + 4 unwind-protect).
+- `tests/test_repl.rs` — 14 passing. `tests/test_lexer.rs` — 17 passing.
+- `tests/test_parser.rs` — 14 passing. `tests/test_env.rs` — 9 passing.
 - `tests/test_builtins.rs` — 66 passing.
 - `Cargo.toml` — Crate name is `strawman`, edition 2024. Dev-dependency: `gag = "1.0"`.
 
@@ -46,45 +43,30 @@ Read by Claude at the start of the next task. Keep under 100 lines.
 - Eval tests use inline `make_test_env()` helper with `+`, `-`, `*` builtins.
 - TDD discipline: write failing test first, then minimal impl.
 - `Value::Builtin(name, fn_ptr)` uses `fn(Vec<Value>) -> Result<Value, String>`.
+- `Value::Continuation(Rc<dyn Fn(Value) -> Result<Value, String>>)` — reified first-class continuation.
 - Error messages: `"unbound variable: <name>"`, `"not a procedure: <debug>"`,
-  `"cannot set! unbound variable: <name>"`, `"expected number"`, `"division by zero"`.
-- `straw_eval` signature: takes `&Expr` and `&Rc<Env>`, returns `Result<Value, String>`.
-- REPL uses generic `BufRead`/`Write` for testability. Tests pass byte slices as input and `Vec<u8>` as output.
-- REPL prompt: `"strawman> "`. Value formatting: integers as `i64`, floats as `f64`, bools as `#t`/`#f`, strings quoted, symbols bare, lists with parens, pairs with dot notation, closures as `#<closure>`, builtins as `#<procedure:name>`.
-- `run_file` reads file, uses `parse_all`, evaluates in shared env, stops on first error (returns `Err`).
-- `main.rs` uses `std::env::args()`: `args.len() > 1` → file mode, else REPL mode.
+  `"cannot set! unbound variable: <name>"`, `"expected number"`, `"division by zero"`,
+  `"expected procedure"` (for call/cc with non-procedure),
+  `"no matching catch for tag: <tag>"` (uncaught throw),
+  `"unknown block: <name>"` (uncaught return-from).
+- Continuation escape: thread-local `ESCAPED_VALUE` + sentinel `CONT_ESCAPE` error string.
+- Throw escape: thread-locals `THROWN_TAG` + `THROWN_VALUE` + sentinel `THROW_ESCAPE` error string.
+- Block escape: thread-locals `BLOCK_NAME` + `BLOCK_VALUE` + sentinel `BLOCK_ESCAPE` error string.
+- `catch` intercepts THROW_ESCAPE, checks tag match; re-propagates if tag doesn't match.
+- `block` intercepts BLOCK_ESCAPE, checks name match; re-propagates if name doesn't match.
+- `straw_eval` catches CONT_ESCAPE, THROW_ESCAPE, and BLOCK_ESCAPE at top level.
+- REPL uses generic `BufRead`/`Write` for testability.
+- REPL prompt: `"strawman> "`. Value formatting: integers as `i64`, floats as `f64`, bools as `#t`/`#f`.
+- Only `Value::Boolean(false)` is falsy; everything else is truthy.
+- Stdout capture tests (gag) MUST run with `--test-threads=1`.
+- Empty `Expr::List` returns `Err("not implemented")`.
 
 ## Gotchas & Notes for Next Task
 
-- **E2.1 `let` is COMPLETE**: All 9 test matrix rows passing. Uses parallel semantics.
-- **E2.2 `let*` is COMPLETE**: All 4 test matrix rows + acceptance criterion passing. Sequential semantics.
-- **E2.3 `letrec` is COMPLETE**: Self-recursive, mutual recursion, non-lambda values all passing. Forward-reference semantics.
-- **E2.4 `define` shorthand is COMPLETE**: All 5 test matrix rows + acceptance criterion passing.
-  - `(define (f params...) body...)` desugars inline to creating a `Value::Closure` and binding it to the function name.
-  - Supports: simple (1 param), multi-param, implicit begin body, recursive calls, no params.
-  - `define` now handles two forms: `(define <symbol> <expr>)` and `(define (<name> <params>...) <body>...)`.
-  - Error messages: `"define: missing function name"`, `"define: missing body"`, `"define: function name must be a symbol"`, `"define: parameter must be a symbol"`, `"define: first argument must be a symbol or list"`.
-- **E2.5 Integration — Factorial 0 / Factorial 10 COMPLETE**: Both tests passing.
-  - `(fact 0)` → `1` (base case `<= n 1` true for 0).
-  - `(fact 10)` → `3628800` (recursive computation works for large input).
-  - Tests use `default_env()` for full builtin support.
-  - Factorial 10 test defines `fact` first, then calls `(fact 10)` separately (matching test matrix pattern).
-- **E2.5 Integration — Fibonacci 10 COMPLETE**: `(fib 10)` → `55`. Double recursion works correctly.
-- **E2.5 Integration — Map with lambda COMPLETE**: `(map (lambda (x) (* x x)) '(1 2 3 4))` → `(1 4 9 16)`.
-  - Recursive map builds result via `cons` onto `'()`. `cons` onto `List([])` produces `List`, not nested `Pair`s.
-- **E2.5 Integration — Filter with lambda COMPLETE**: `(filter (lambda (x) (> x 2)) '(1 2 3 4 5))` → `(3 4 5)`.
-  - Uses same building blocks as map: recursion, `if`, `cons`, `car`, `cdr`, `null?`, closures. Passed without new production code.
-- **E2.5 Integration — Closure scope COMPLETE**: `(begin (define x 10) (define (f) x) (define (g) (define x 20) (f)) (g))` → `10`.
-  - Lexical scoping works correctly: closures capture their defining env, not the calling env.
-- **E2.5 Integration — Accumulator COMPLETE**: Mutable closure with `set!` works correctly.
-  - `(make-acc 0)` returns a closure that mutates `n` in its captured env via `set!`.
-  - `(a 5)` → `5`, `(a 3)` → `8`, `(a 2)` → `10` — state persists across calls.
-  - No new production code needed — `Rc<Env>` + `RefCell` already supports shared mutable state.
-- **E2.5 Integration COMPLETE**: All 7 test matrix rows passing (Factorial 0, Factorial 10, Fibonacci, Map, Filter, Closure scope, Accumulator).
-- **Epic 2 (Namespaces & Recursion) COMPLETE**: All E2.1–E2.5 stories are done. Next up is Epic 3.
-- `run_file` stops on first error and returns `Err(msg)`. The REPL recovers from errors and continues.
-- `display` builtin prints to actual stdout (not the REPL's writer).
-- Stdout capture tests (gag) MUST run with `--test-threads=1`.
-- Empty `Expr::List` returns `Err("not implemented")` — not yet needed.
-- Only `Value::Boolean(false)` is falsy; everything else is truthy.
-- Mutable closures work via `Rc<Env>` + `RefCell`: closures share env references, `set!` mutates in-place.
+- **E3.5 unwind-protect COMPLETE**: All 4 tests pass (normal, with throw, cleanup order, acceptance criterion).
+- `unwind-protect` captures the protected expression result (Ok or Err), always runs cleanup forms, then re-propagates.
+- Cleanup forms run with `?` — if a cleanup form errors, it replaces the original error (matches Common Lisp behavior).
+- Thread-local state (THROWN_TAG/VALUE, BLOCK_NAME/VALUE) survives through cleanup forms as long as cleanup doesn't touch them.
+- **Epic 3 COMPLETE**: All stories E3.1-E3.5 done (CPS evaluator, call/cc, catch/throw, block/return-from, unwind-protect).
+- Epics 1-2 fully complete. Epic 3 fully complete.
+- All 234 tests pass across all modules (114 eval + 66 builtins + 17 lexer + 14 parser + 14 repl + 9 env).
