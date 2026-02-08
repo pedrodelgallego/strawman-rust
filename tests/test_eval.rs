@@ -766,3 +766,89 @@ fn eval_e1_10_non_procedure_string() {
         "expected 'not a procedure' error, got: {err}"
     );
 }
+
+// ── E1.14 — and special form ──
+
+#[test]
+fn eval_e1_14_and_all_true() {
+    use strawman::parser::parse;
+    // (and 1 2 3) → 3
+    let env = Rc::new(Env::new());
+    let expr = parse("(and 1 2 3)").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(3.0));
+}
+
+#[test]
+fn eval_e1_14_and_short_circuit() {
+    use strawman::parser::parse;
+    // (and #f (error "boom")) → #f
+    // The second expression must NOT be evaluated
+    let env = Rc::new(Env::new());
+    let expr = parse("(and #f (error \"boom\"))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Boolean(false));
+}
+
+#[test]
+fn eval_e1_14_and_empty() {
+    use strawman::parser::parse;
+    // (and) → #t
+    let env = Rc::new(Env::new());
+    let expr = parse("(and)").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Boolean(true));
+}
+
+#[test]
+fn eval_e1_14_and_one_false() {
+    use strawman::parser::parse;
+    // (and 1 #f 3) → #f
+    let env = Rc::new(Env::new());
+    let expr = parse("(and 1 #f 3)").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Boolean(false));
+}
+
+// ── E1.14 — or special form ──
+
+#[test]
+fn eval_e1_14_or_first_true() {
+    use strawman::parser::parse;
+    // (or 1 2) → 1
+    let env = Rc::new(Env::new());
+    let expr = parse("(or 1 2)").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(1.0));
+}
+
+#[test]
+fn eval_e1_14_or_all_false() {
+    use strawman::parser::parse;
+    // (or #f #f) → #f
+    let env = Rc::new(Env::new());
+    let expr = parse("(or #f #f)").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Boolean(false));
+}
+
+#[test]
+fn eval_e1_14_or_short_circuit() {
+    use strawman::parser::parse;
+    // (or 1 (error "boom")) → 1
+    // The second expression must NOT be evaluated
+    let env = Rc::new(Env::new());
+    let expr = parse("(or 1 (error \"boom\"))").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Number(1.0));
+}
+
+#[test]
+fn eval_e1_14_or_empty() {
+    use strawman::parser::parse;
+    // (or) → #f
+    let env = Rc::new(Env::new());
+    let expr = parse("(or)").unwrap();
+    let result = straw_eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Boolean(false));
+}

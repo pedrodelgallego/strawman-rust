@@ -76,6 +76,32 @@ pub fn straw_eval(expr: &Expr, env: &Rc<Env>) -> Result<Value, String> {
                     let body = elements[2..].to_vec();
                     Ok(Value::Closure(params, body, Rc::clone(env)))
                 }
+                Expr::Symbol(name) if name == "and" => {
+                    let args = &elements[1..];
+                    if args.is_empty() {
+                        return Ok(Value::Boolean(true));
+                    }
+                    for arg in &args[..args.len() - 1] {
+                        let val = straw_eval(arg, env)?;
+                        if matches!(val, Value::Boolean(false)) {
+                            return Ok(Value::Boolean(false));
+                        }
+                    }
+                    straw_eval(&args[args.len() - 1], env)
+                }
+                Expr::Symbol(name) if name == "or" => {
+                    let args = &elements[1..];
+                    if args.is_empty() {
+                        return Ok(Value::Boolean(false));
+                    }
+                    for arg in &args[..args.len() - 1] {
+                        let val = straw_eval(arg, env)?;
+                        if !matches!(val, Value::Boolean(false)) {
+                            return Ok(val);
+                        }
+                    }
+                    straw_eval(&args[args.len() - 1], env)
+                }
                 Expr::Symbol(name) if name == "if" => {
                     if elements.len() < 3 || elements.len() > 4 {
                         return Err("if expects 2 or 3 arguments".to_string());
