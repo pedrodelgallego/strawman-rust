@@ -3,9 +3,47 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 /// Value represents a Strawman Lisp value.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone)]
 pub enum Value {
     Number(f64),
+    StringLit(String),
+    Boolean(bool),
+    Symbol(String),
+    List(Vec<Value>),
+    Builtin(String, fn(Vec<Value>) -> Result<Value, String>),
+    Closure(Vec<String>, Vec<crate::parser::Expr>, Rc<Env>),
+    Void,
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Value::Number(a), Value::Number(b)) => a == b,
+            (Value::StringLit(a), Value::StringLit(b)) => a == b,
+            (Value::Boolean(a), Value::Boolean(b)) => a == b,
+            (Value::Symbol(a), Value::Symbol(b)) => a == b,
+            (Value::List(a), Value::List(b)) => a == b,
+            (Value::Builtin(a, _), Value::Builtin(b, _)) => a == b,
+            (Value::Closure(_, _, _), Value::Closure(_, _, _)) => false,
+            (Value::Void, Value::Void) => true,
+            _ => false,
+        }
+    }
+}
+
+impl std::fmt::Debug for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::Number(n) => write!(f, "Number({n})"),
+            Value::StringLit(s) => write!(f, "StringLit({s:?})"),
+            Value::Boolean(b) => write!(f, "Boolean({b})"),
+            Value::Symbol(s) => write!(f, "Symbol({s:?})"),
+            Value::List(l) => write!(f, "List({l:?})"),
+            Value::Builtin(name, _) => write!(f, "Builtin({name:?})"),
+            Value::Closure(params, _, _) => write!(f, "Closure({params:?})"),
+            Value::Void => write!(f, "Void"),
+        }
+    }
 }
 
 impl From<f64> for Value {

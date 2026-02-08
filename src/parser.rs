@@ -1,6 +1,6 @@
 use crate::lexer::{tokenize, Token};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Expr {
     Number(f64),
     Symbol(String),

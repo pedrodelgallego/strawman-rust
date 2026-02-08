@@ -6,7 +6,7 @@ Read by Claude at the start of the next task. Keep under 100 lines.
 ## Current State
 
 - `src/main.rs` — Entry point (binary). Just `fn main()` with a placeholder print.
-- `src/lib.rs` — Library root. Declares `pub mod env;`, `pub mod lexer;`, `pub mod parser;`.
+- `src/lib.rs` — Library root. Declares `pub mod env;`, `pub mod eval;`, `pub mod lexer;`, `pub mod parser;`.
 - `src/lexer.rs` — Lexer module. Exports `Token` enum and `tokenize` function.
   - `Token` enum: `Number(f64)`, `StringLit(String)`, `Boolean(bool)`, `Symbol(String)`,
     `LParen`, `RParen`, `Quote`. Derives `Debug, PartialEq`.
@@ -17,53 +17,48 @@ Read by Claude at the start of the next task. Keep under 100 lines.
   - `pub fn parse(input: &str) -> Result<Expr, String>` — returns first expression.
   - `pub fn parse_all(input: &str) -> Result<Vec<Expr>, String>` — returns all expressions.
 - `src/env.rs` — Environment module. Exports `Value` enum and `Env` struct.
-  - `Value` enum: `Number(f64)`. Derives `Debug, Clone, PartialEq`.
-    Has `impl From<f64> for Value`.
+  - `Value` enum: `Number(f64)`, `StringLit(String)`, `Boolean(bool)`, `Symbol(String)`,
+    `List(Vec<Value>)`, `Builtin(String, fn(Vec<Value>) -> Result<Value, String>)`,
+    `Closure(Vec<String>, Vec<Expr>, Rc<Env>)`, `Void`.
+    Derives `Clone`. Has manual `PartialEq` (Builtin by name, Closure always !=) and manual `Debug`.
   - `Env` struct: contains `bindings: RefCell<HashMap<String, Value>>`,
     `parent: Option<Rc<Env>>`.
-  - `Env::new()` — creates empty environment (no parent).
-  - `Env::with_parent(parent: Rc<Env>)` — creates child environment with parent link.
-  - `Env::set(&self, name: &str, value: Value)` — inserts binding in current frame.
-  - `Env::update(&self, name: &str, value: Value) -> Result<(), String>` — updates
-    existing binding, walking parent chain. Returns
-    `Err("cannot set! unbound variable: <name>")` if not found anywhere.
-  - `Env::extend(parent: Rc<Env>, params: &[String], args: Vec<Value>) -> Result<Self, String>`
-    — creates a child env binding each param to the corresponding arg.
-    Returns `Err("arity mismatch: expected N, got M")` if lengths differ.
-  - `Env::lookup(&self, name: &str) -> Result<Value, String>` — checks local bindings,
-    then walks parent chain. Returns `Err("unbound variable: <name>")` if not found.
+  - Methods: `new`, `with_parent`, `set`, `update`, `extend`, `lookup`.
+- `src/eval.rs` — Evaluator module. Exports `straw_eval`.
+  - `pub fn straw_eval(expr: &Expr, env: &Rc<Env>) -> Result<Value, String>`.
+  - Handles: self-evaluating forms (Number, StringLit, Boolean),
+    `Expr::Symbol(name)` → `env.lookup(name)`,
+    `Expr::List` with special forms: `(quote ...)`, `(define var expr)`, `(set! var expr)`,
+    `(begin ...)`, `(if ...)`, `(lambda (params...) body...)`.
+  - Function application: non-special-form lists evaluate head + args, then call.
+    Supports `Value::Builtin` and `Value::Closure`. Closures create child env via `Env::extend`,
+    evaluate body sequentially, return last value. Non-procedure head → `"not a procedure: ..."` error.
+  - Helper `expr_to_value` converts `Expr` to `Value` for quote.
 - `tests/test_lexer.rs` — 17 passing lexer tests.
 - `tests/test_parser.rs` — 14 passing parser tests.
-- `tests/test_env.rs` — 9 passing env tests: `set_and_lookup`, `unbound_lookup_errors`,
-  `parent_chain_lookup`, `shadowing`, `update_existing_binding`, `update_unbound_errors`,
-  `extend_with_params_and_args`, `extend_arity_mismatch_errors`,
-  `parent_not_mutated_by_child`.
+- `tests/test_env.rs` — 9 passing env tests.
+- `tests/test_eval.rs` — 50 passing eval tests (8 E1.4 + 7 quote E1.5 + 8 if E1.6 + 6 begin E1.7 + 7 define/set! E1.8 + 8 lambda E1.9 + 6 E1.10 builtin/closure/nested/higher-order/non-procedure/non-procedure-string).
 - `Cargo.toml` — Crate name is `strawman`, edition 2024.
 
 ## Conventions & Decisions
 
-- Lexer: `src/lexer.rs`, declared via `pub mod lexer;` in `lib.rs`.
-- Parser: `src/parser.rs`, declared via `pub mod parser;` in `lib.rs`.
-- Env: `src/env.rs`, declared via `pub mod env;` in `lib.rs`.
-- `main.rs` is the binary entry point; `lib.rs` is the library root.
-- Integration tests: `tests/test_{module}.rs`. Env tests import with
-  `use strawman::env::Env;`.
+- Integration tests: `tests/test_{module}.rs`. Eval tests import with
+  `use strawman::eval::straw_eval;`, `use strawman::env::{Env, Value};`,
+  `use strawman::parser::Expr;`.
 - TDD discipline: write failing test first, then minimal impl.
-- `Token` enum uses `f64` for all numbers. `Expr::Number(f64)` mirrors this.
-- `Value::Number(f64)` mirrors the same convention.
-- Env uses `RefCell<HashMap<String, Value>>` for interior mutability so `set`
-  can take `&self` instead of `&mut self` (needed for shared parent refs later).
-- Error messages: `"unbound variable: <name>"` for missing lookups.
-- `Value` has `From<f64>` for ergonomic test construction (e.g., `1.0.into()`).
+- `Value::Builtin(name, fn_ptr)` uses `fn(Vec<Value>) -> Result<Value, String>` (fn pointer, not closure).
+  `PartialEq` compares by name only. `Debug` shows `Builtin("name")`.
+- Error messages: `"unbound variable: <name>"`, `"not a procedure: <debug>"`,
+  `"cannot set! unbound variable: <name>"`.
+- `straw_eval` signature: takes `&Expr` and `&Rc<Env>`, returns `Result<Value, String>`.
 
 ## Gotchas & Notes for Next Task
 
-- **E1.3 complete:** All 9 test matrix rows passing (9/9). Environment module is done.
-- Next up: E1.4 — Evaluator (`straw-eval`). Will need `Value` variants beyond
-  `Number(f64)`: `Boolean(bool)`, `StringLit(String)`, `Symbol(String)`,
-  `List(Vec<Value>)`, `Nil`, `Closure{params, body, env}`, `Builtin(fn)`.
-- `Expr` has no `Clone` derive yet — add it when the evaluator needs to clone AST nodes.
-- `Env::set` inserts only into the current frame (child), so parent isolation
-  is guaranteed by construction. Tested in `parent_not_mutated_by_child`.
-- `Env::update` walks the parent chain to find and mutate an existing binding.
-  Uses `contains_key` then `insert` to avoid double-borrow on `RefCell`.
+- **E1.10 complete.** All 6 test matrix rows pass: builtin call, closure call, nested call,
+  higher-order, non-procedure number error, non-procedure string error.
+- Test file has a `make_test_env()` helper that sets up `+`, `-`, `*` builtins for E1.10 tests.
+- Non-procedure error format: `"not a procedure: Number(42)"`, `"not a procedure: StringLit(\"hello\")"`.
+- Arity mismatch errors come from `Env::extend` — format: `"arity mismatch: expected <n>, got <m>"`.
+- `define` handles only `(define symbol expr)` — no function shorthand yet.
+- Empty `Expr::List` currently returns `Err("not implemented")` — will need to handle as nil or error.
+- Builtins module (`src/builtins.rs`) doesn't exist yet — will be needed for E1.11 (default env).
