@@ -25,20 +25,23 @@ Read by Claude at the start of the next task. Keep under 100 lines.
 - `src/builtins.rs` — Builtins module. Exports `default_env`.
   - Includes `eq?`, `equal?`, `make-vector`, `vector-ref`, `vector-set!`, `vector-length`, `vector?`.
 - `src/repl.rs` — REPL module. Exports `run_repl`, `run_file`, and private `format_value`.
-- `tests/test_eval.rs` — 136 passing tests (129 prior + 7 E4.4).
-- `tests/test_repl.rs` — 14 passing. `tests/test_lexer.rs` — 17 passing.
-- `tests/test_parser.rs` — 14 passing. `tests/test_env.rs` — 9 passing.
-- `tests/test_builtins.rs` — 66 passing.
+- `docs/semantics.md` — Formal denotational semantics for all core forms and builtins.
+- `tests/test_semantics.rs` — 104 tests validating semantics document against interpreter.
+- `tests/test_eval.rs` — 136 passing. `tests/test_repl.rs` — 14 passing.
+- `tests/test_lexer.rs` — 17 passing. `tests/test_parser.rs` — 14 passing.
+- `tests/test_env.rs` — 9 passing. `tests/test_builtins.rs` — 66 passing.
 - `Cargo.toml` — Crate name is `strawman`, edition 2024. Dev-dependency: `gag = "1.0"`.
 
 ## Conventions & Decisions
 
 - Integration tests: `tests/test_{module}.rs`. Builtins tests use `default_env()`.
 - Eval tests use inline `make_test_env()` helper with `+`, `-`, `*` builtins.
+- Semantics tests: `tests/test_semantics.rs`, annotated with `sem_{section}_{name}`.
+  Each test references a section of `docs/semantics.md` (e.g., sem_4_1 = Section 4.1).
+  Traceability summary at bottom of file maps sections to test counts.
 - TDD discipline: write failing test first, then minimal impl.
 - `Value::List(Rc<Vec<Value>>)` — lists use `Rc` for identity semantics (`eq?` uses `Rc::ptr_eq`).
 - `Value::Vector(Rc<RefCell<Vec<Value>>>)` — vectors use `Rc<RefCell<>>` for mutable in-place access.
-  `vector-set!` is a regular builtin (not a special form) because it mutates via `RefCell`.
 - `Value::Builtin(name, fn_ptr)` uses `fn(Vec<Value>) -> Result<Value, String>`.
 - `Value::Continuation(Rc<dyn Fn(Value) -> Result<Value, String>>)` — reified first-class continuation.
 - `PartialEq` for `Value` compares structurally (used by `equal?`). `eq?` uses `Rc::ptr_eq` for lists.
@@ -59,11 +62,10 @@ Read by Claude at the start of the next task. Keep under 100 lines.
 
 ## Gotchas & Notes for Next Task
 
-- **E4.4 Vectors COMPLETE**: `make-vector`, `vector-ref`, `vector-set!`, `vector-length`, `vector?` added.
-- `Value::Vector(Rc<RefCell<Vec<Value>>>)` uses `RefCell` for interior mutability.
-  `vector-set!` works as a regular builtin — cloning a `Value::Vector` clones the `Rc`,
-  so the mutation is visible through all references to the same vector.
-- `make-vector` accepts 1 or 2 args: `(make-vector size)` fills with `0`, `(make-vector size fill)`.
-- Out-of-bounds access returns `"index out of range"` error.
-- **Epics 1-3 COMPLETE**. E4.1-E4.4 complete.
-- All 256 tests pass across all modules (136 eval + 66 builtins + 17 lexer + 14 parser + 14 repl + 9 env).
+- **E5.1 & E5.2 COMPLETE**: `docs/semantics.md` covers all core forms + builtins.
+  `tests/test_semantics.rs` has 104 tests with traceability to all valuation clauses
+  (Sections 2–7 of semantics.md). Traceability summary at bottom of test file.
+- **Epics 1-5 COMPLETE**.
+- All 360 tests pass across all modules (136 eval + 66 builtins + 104 semantics + 17 lexer + 14 parser + 14 repl + 9 env).
+- **Next up: Epic 6** (Fast Interpretation) — pretreatment, lexical addressing, benchmarks.
+- display/newline tests produce stdout output; use `--test-threads=1` to avoid interleaving.
