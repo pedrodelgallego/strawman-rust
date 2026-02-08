@@ -6,6 +6,7 @@ pub enum Token {
     Symbol(String),
     LParen,
     RParen,
+    Quote,
 }
 
 pub fn tokenize(input: &str) -> Result<Vec<Token>, String> {
@@ -91,6 +92,13 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>, String> {
             continue;
         }
 
+        // Quote: '
+        if ch == '\'' {
+            tokens.push(Token::Quote);
+            i += 1;
+            continue;
+        }
+
         // Symbol: identifiers and operators
         if is_symbol_char(ch) {
             let start = i;
@@ -109,5 +117,5 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>, String> {
 }
 
 fn is_symbol_char(ch: char) -> bool {
-    !ch.is_whitespace() && ch != '(' && ch != ')' && ch != '"' && ch != ';'
+    !ch.is_whitespace() && ch != '(' && ch != ')' && ch != '"' && ch != ';' && ch != '\''
 }

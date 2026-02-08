@@ -6,62 +6,56 @@ Read by Claude at the start of the next task. Keep under 100 lines.
 ## Current State
 
 - `src/main.rs` — Entry point (binary). Just `fn main()` with a placeholder print.
-- `src/lib.rs` — Library root. Declares `pub mod lexer;`.
+- `src/lib.rs` — Library root. Declares `pub mod lexer;` and `pub mod parser;`.
 - `src/lexer.rs` — Lexer module. Exports `Token` enum and `tokenize` function.
   - `Token` enum: `Number(f64)`, `StringLit(String)`, `Boolean(bool)`, `Symbol(String)`,
-    `LParen`, `RParen`. Derives `Debug, PartialEq`.
+    `LParen`, `RParen`, `Quote`. Derives `Debug, PartialEq`.
   - `pub fn tokenize(input: &str) -> Result<Vec<Token>, String>` — character-by-character
-    scanner. Returns `Ok(tokens)` on success, `Err(message)` on error.
-    Handles: comments (`;` to end of line, skipped),
-    whitespace (skipped), parentheses (`(` → `LParen`, `)` → `RParen`),
-    numbers (integers, negatives, floats),
-    string literals (with backslash escape sequences),
-    booleans (`#t` → `Boolean(true)`, `#f` → `Boolean(false)`),
-    symbols (identifiers like `foo` and operators like `+`, `*`, `-`).
-    Unterminated strings return `Err("unterminated string")`.
-  - `fn is_symbol_char(ch: char) -> bool` — helper; returns true for any char that
-    isn't whitespace, `(`, `)`, `"`, or `;`.
-- `tests/test_lexer.rs` — Integration tests for lexer.
-  Contains 17 tests (all passing): `empty_input_returns_empty_list`, `single_number`,
-  `negative_number`, `float_number`, `string_literal`, `string_with_escape`, `symbol`,
-  `operator_symbol`, `boolean_true`, `boolean_false`, `parens`, `mixed_expression`,
-  `comment_skipped`, `comment_skipped_with_newline`, `whitespace_only_returns_empty_list`,
-  `unterminated_string_returns_error`, `nested_parens`.
+    scanner. Handles comments, whitespace, parens, quote (`'`), numbers, strings,
+    booleans, symbols. `'` is excluded from symbol characters.
+- `src/parser.rs` — Parser module. Exports `Expr` enum, `parse`, and `parse_all`.
+  - `Expr` enum: `Number(f64)`, `Symbol(String)`, `StringLit(String)`, `Boolean(bool)`,
+    `List(Vec<Expr>)`. Derives `Debug, PartialEq`.
+  - `pub fn parse(input: &str) -> Result<Expr, String>` — tokenizes input, then
+    calls `parse_expr` on the token stream. Returns first parsed expression.
+  - `pub fn parse_all(input: &str) -> Result<Vec<Expr>, String>` — tokenizes input,
+    then parses all expressions in the token stream. Returns `Vec<Expr>`.
+    Empty input → `Err("empty input")`.
+  - `fn parse_expr(tokens: &[Token], pos: &mut usize) -> Result<Expr, String>` —
+    recursive-descent parser. Handles all Token variants including `Token::Quote`,
+    which desugars `'expr` into `Expr::List(vec![Expr::Symbol("quote"), expr])`.
+- `tests/test_lexer.rs` — 17 passing lexer tests.
+- `tests/test_parser.rs` — 14 passing parser tests: `single_atom_number`,
+  `single_atom_symbol`, `single_atom_string`, `single_atom_bool`, `simple_list`,
+  `nested_list`, `empty_list`, `deeply_nested`, `quote_sugar_atom`, `quote_sugar_list`,
+  `multiple_exprs`, `unmatched_open_paren`, `unmatched_close_paren`, `empty_input`.
 - `Cargo.toml` — Crate name is `strawman`, edition 2024.
 
 ## Conventions & Decisions
 
-- Lexer module lives at `src/lexer.rs`, declared via `pub mod lexer;` in `lib.rs`.
-- `main.rs` is the binary entry point; `lib.rs` is the library root that exposes
-  modules for integration tests.
-- Integration tests live in `tests/test_lexer.rs` (matching `test_{module}` pattern
-  from config.json). Import with `use strawman::lexer::{tokenize, Token};`.
-- Test names describe behavior: `single_number`, `negative_number`, `symbol`, etc.
+- Lexer: `src/lexer.rs`, declared via `pub mod lexer;` in `lib.rs`.
+- Parser: `src/parser.rs`, declared via `pub mod parser;` in `lib.rs`.
+- `main.rs` is the binary entry point; `lib.rs` is the library root.
+- Integration tests: `tests/test_{module}.rs`. Parser tests import with
+  `use strawman::parser::{parse, parse_all, Expr};`.
 - TDD discipline: write failing test first, then minimal impl.
-- `Token` enum uses `f64` for all numbers (integers stored as `42.0` etc.).
-- `Token::StringLit(String)` for string literals (named `StringLit` to avoid
-  collision with Rust's `String` type).
-- `Token::Symbol(String)` for identifiers and operator symbols.
-- Lexer uses `Vec<char>` + index-based scanning (not iterator-based).
-- String escape handling: backslash causes next char to be taken literally.
-- `tokenize` returns `Result<Vec<Token>, String>`. Happy-path tests call `.unwrap()`.
-  Error tests assert on `is_err()` and check the error message with `unwrap_err()`.
-- Negative numbers: `-` followed by digit is parsed as a negative number.
-  Standalone `-` (not followed by digit) is parsed as a Symbol.
-- Symbol parsing: any sequence of `is_symbol_char` characters. This helper returns
-  true for anything that isn't whitespace, `(`, `)`, `"`, or `;`.
+- `Token` enum uses `f64` for all numbers. `Expr::Number(f64)` mirrors this.
+- Parser uses recursive-descent with `&[Token]` slice + `&mut usize` position.
+- `parse(input)` returns first expression. `parse_all(input)` returns all expressions.
+- Both return `Result<..., String>`. Happy-path tests use `.unwrap()`.
+- Error messages: `"empty input"`, `"unexpected end of input"`,
+  `"unexpected token"`, `"unexpected closing paren"`.
+- Quote sugar: lexer emits `Token::Quote` for `'`, parser desugars to
+  `(quote <expr>)`. No special `Quote` variant in `Expr` — it's just a `List`.
 
 ## Gotchas & Notes for Next Task
 
-- All 17 test matrix rows for E1.1 (Lexer) are now covered and passing.
-  The lexer story E1.1 is complete. Next phase: Parser (E1.2).
-- `tokenize` returns `Result<Vec<Token>, String>`. Any new callers (parser,
-  REPL, etc.) must handle the Result. All existing tests use `.unwrap()`.
-- The negative number heuristic (`-` + digit = number) may conflict with expressions
-  like `(-3)` (no space). This is acceptable — Lisp convention uses spaces.
-- `is_symbol_char` allows digits inside symbols (e.g., `foo123`), which is correct.
-  `#` is still a valid symbol char, but `#t`/`#f` are caught before the symbol
-  branch. If other `#`-prefixed tokens are needed later, the boolean branch or
-  a general `#`-dispatch may need refinement.
-- Parser will need to consume `Vec<Token>` and produce an AST (s-expressions).
-  Consider a recursive-descent parser with `parse` as the public entry point.
+- **Parser E1.2 is complete.** All 14 test matrix rows are covered.
+- Next up: E1.3 (Environment) or E1.4 (Evaluator) per plan.md.
+- `parse` returns only the first expression and ignores trailing tokens.
+  `parse_all` consumes all tokens and returns `Vec<Expr>`.
+- Both `parse` and `parse_all` return `Err("empty input")` for empty/whitespace input.
+- Unmatched paren errors: missing `)` → `"unexpected end of input"`,
+  stray `)` → `"unexpected closing paren"`.
+- Quote desugaring is recursive — `''x` produces `(quote (quote x))`.
+- `Expr` has no `Clone` derive yet — add it when the evaluator needs to clone AST nodes.
