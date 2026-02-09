@@ -1,3 +1,4 @@
+pub mod bench;
 pub mod builtins;
 pub mod env;
 pub mod eval;

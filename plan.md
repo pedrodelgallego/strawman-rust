@@ -302,7 +302,7 @@ Same TDD cycle applies: RED → RED → GREEN → GREEN → FIX → REFACTOR →
 
 ### TDD Steps
 - [x] **E6.1** — Run all existing tests through pretreat + fast-eval → identical results
-- [ ] **E6.2** — Lexical addressing: local var, free var one level, multiple params
+- [x] **E6.2** — Lexical addressing: local var, free var one level, multiple params
 - [ ] **E6.3** — Benchmark harness: factorial, fibonacci, ackermann, map
 
 ## Phase 12 — Bytecode Compilation

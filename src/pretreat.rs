@@ -2,7 +2,7 @@ use crate::parser::Expr;
 
 /// A pretreated expression. Special forms are recognized at pretreat time
 /// so the fast evaluator doesn't need to match on symbol names.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TreatedExpr {
     /// Self-evaluating number.
     Number(f64),

@@ -6,7 +6,7 @@ use crate::eval::straw_eval;
 use crate::parser::{parse, parse_all, Expr};
 
 /// Format a Value for REPL display.
-fn format_value(val: &Value) -> String {
+pub fn format_value(val: &Value) -> String {
     match val {
         Value::Number(n) => {
             if *n == n.floor() && n.is_finite() {
