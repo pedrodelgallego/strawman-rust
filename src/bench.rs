@@ -1,6 +1,8 @@
+use std::io::Write;
 use std::rc::Rc;
 use std::time::Instant;
 
+use crate::builtins::default_env;
 use crate::env::Env;
 use crate::eval::straw_eval;
 use crate::fast_eval::fast_eval;
@@ -110,4 +112,12 @@ pub fn format_table(results: &[BenchResult]) -> String {
         ));
     }
     out
+}
+
+/// Run all benchmarks and write the comparison table to the given writer.
+pub fn run_bench_to_writer<W: Write>(output: &mut W) {
+    let env = default_env();
+    let results = run_benchmarks(&env);
+    let table = format_table(&results);
+    let _ = write!(output, "{}", table);
 }

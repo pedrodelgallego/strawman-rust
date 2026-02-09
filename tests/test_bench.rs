@@ -1,4 +1,4 @@
-use strawman::bench::{run_benchmarks, format_table};
+use strawman::bench::{run_benchmarks, format_table, run_bench_to_writer};
 use strawman::builtins::default_env;
 
 /// All bench tests need a large stack because CPS evaluators with
@@ -85,6 +85,39 @@ fn benchmark_table_output() {
             assert!(table.contains("fibonacci(25)"), "Table missing fibonacci row");
             assert!(table.contains("ackermann(3,5)"), "Table missing ackermann row");
             assert!(table.contains("map over list"), "Table missing map row");
+        })
+        .unwrap();
+    handler.join().unwrap();
+}
+
+#[test]
+fn run_bench_to_writer_prints_comparison_table() {
+    let builder = std::thread::Builder::new().stack_size(BENCH_STACK);
+    let handler = builder
+        .spawn(|| {
+            let mut output = Vec::new();
+            run_bench_to_writer(&mut output);
+            let table = String::from_utf8(output).unwrap();
+
+            // Should contain the header row with column names
+            assert!(table.contains("Benchmark"), "Output missing Benchmark header");
+            assert!(table.contains("Naive (ms)"), "Output missing Naive column");
+            assert!(table.contains("Fast (ms)"), "Output missing Fast column");
+            assert!(table.contains("Speedup"), "Output missing Speedup column");
+
+            // Should contain all four benchmark rows
+            assert!(table.contains("factorial(20)"), "Output missing factorial row");
+            assert!(table.contains("fibonacci(25)"), "Output missing fibonacci row");
+            assert!(table.contains("ackermann(3,5)"), "Output missing ackermann row");
+            assert!(table.contains("map over list"), "Output missing map row");
+
+            // Each row should have a speedup value (ends with 'x')
+            for line in table.lines().skip(2) {
+                // skip header + separator
+                if !line.trim().is_empty() {
+                    assert!(line.contains('x'), "Row missing speedup: {}", line);
+                }
+            }
         })
         .unwrap();
     handler.join().unwrap();
